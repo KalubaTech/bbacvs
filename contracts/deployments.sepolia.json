@@ -1,0 +1,10 @@
+{
+  "network": "sepolia",
+  "chainId": 11155111,
+  "contracts": {
+    "GovernanceSafe": "0x39aea70a718B5a77710aE0a40B4d79fcE18Ef990",
+    "IssuerRegistry": "0x99B41d97B29E85831591a2fb0f5ce5132BFb73ED",
+    "RevocationRegistry": "0xB23E0922Bd655FbC4CE17d1236120e5685918263",
+    "CredentialRegistry": "0x785c52048cf543fd7907986BB77170345059B8D2"
+  }
+}

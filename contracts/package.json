@@ -1,0 +1,21 @@
+{
+  "name": "@bbacvs/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BBACVS on-chain layer — Solidity smart contracts (Sepolia testnet)",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "coverage": "hardhat coverage",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "slither": "slither . --config-file slither.config.json"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "dotenv": "^16.4.5"
+  }
+}

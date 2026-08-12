@@ -1,0 +1,26 @@
+{
+  "name": "@bbacvs/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BBACVS presentation layer — Issuer / Student / Verification portals",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0",
+    "ethers": "^6.13.0",
+    "jsqr": "^1.4.0",
+    "next": "14.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4"
+  }
+}

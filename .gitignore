@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# env / secrets — never commit
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# testnet key material — never commit (contain private keys)
+contracts/governance-keys.json
+contracts/issuer-key.json
+
+# hardhat
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
+contracts/coverage/
+contracts/coverage.json
+
+# next.js
+web/.next/
+web/out/
+web/build/
+
+# logs
+*.log
+npm-debug.log*
+
+# os / editor
+.DS_Store
+.vscode/
+.idea/
+
+# test / coverage
+coverage/
+.nyc_output/
