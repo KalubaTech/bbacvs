@@ -1,5 +1,7 @@
 // Per-portal theme + navigation config for the BBACVS portal suite.
-// Nav items with href "#" are part of the IA but not yet implemented.
+// Navigation is grouped into the five regulatory areas:
+// Governance · Qualifications · Recognition · Credential Trust · Administration.
+// Every href must point at a real page — no "#" placeholders.
 
 export const PORTALS = {
   zaqa: {
@@ -11,26 +13,52 @@ export const PORTALS = {
     active: "bg-white/10 text-white",
     accentBtn: "bg-[#12275c] hover:bg-[#1b3576] text-white",
     chip: { label: "ZAQA Admin", cls: "border-blue-200 bg-blue-50 text-blue-700" },
-    user: { name: "Chanda Mwansa", sub: "" },
     search: "Search applications, institutions, users...",
     bellHref: "/zaqa/notifications",
-    bellCount: 2,
     org: {
       title: "Zambia Qualifications Authority (ZAQA)",
       tagline: "Building Trust in Qualifications",
     },
     nav: [
-      { label: "Dashboard", icon: "dashboard", href: "/zaqa/applications" },
-      { label: "Applications", icon: "apps", href: "/zaqa/applications", id: "applications" },
-      { label: "Qualification Registry", icon: "registry", href: "/zaqa/nqf", id: "nqf" },
-      { label: "Validation Queue", icon: "queue", href: "/zaqa/validation", id: "validation" },
-      { label: "Disputes", icon: "clock", href: "/zaqa/disputes", id: "disputes" },
-      { label: "Suspensions", icon: "user", href: "/zaqa/suspensions", id: "suspensions" },
-      { label: "Revocations", icon: "revoke", href: "/zaqa/revocations", id: "revocations" },
-      { label: "Audit Trail", icon: "audit", href: "/zaqa/audit", id: "audit" },
-      { label: "Reports", icon: "reports", href: "/zaqa/audit#reports", id: "reports" },
-      { label: "User Management", icon: "users", href: "/zaqa/users", id: "users" },
-      { label: "Settings", icon: "settings", href: "#", id: "settings" },
+      {
+        heading: "Governance",
+        items: [
+          { label: "Dashboard", icon: "dashboard", href: "/zaqa/dashboard", id: "dashboard" },
+          { label: "Case Management", icon: "apps", href: "/zaqa/applications", id: "applications" },
+          { label: "Audit & History", icon: "audit", href: "/zaqa/audit", id: "audit" },
+        ],
+      },
+      {
+        heading: "Qualifications",
+        items: [
+          { label: "National Register", icon: "registry", href: "/zaqa/register", id: "register" },
+          { label: "Registration Applications", icon: "clipboardCheck", href: "/zaqa/qualifications", id: "qualifications" },
+          { label: "NQF Framework", icon: "scale", href: "/zaqa/nqf", id: "nqf" },
+        ],
+      },
+      {
+        heading: "Recognition",
+        items: [
+          { label: "RPL & Credit Transfer", icon: "award", href: "/zaqa/recognition", id: "recognition" },
+        ],
+      },
+      {
+        heading: "Credential Trust",
+        items: [
+          { label: "Validation Queue", icon: "queue", href: "/zaqa/validation", id: "validation" },
+          { label: "Disputes & Appeals", icon: "clock", href: "/zaqa/disputes", id: "disputes" },
+          { label: "Suspensions", icon: "user", href: "/zaqa/suspensions", id: "suspensions" },
+          { label: "Revocations", icon: "revoke", href: "/zaqa/revocations", id: "revocations" },
+        ],
+      },
+      {
+        heading: "Administration",
+        items: [
+          { label: "User Management", icon: "users", href: "/zaqa/users", id: "users" },
+          { label: "Notifications", icon: "bell", href: "/zaqa/notifications", id: "notifications" },
+          { label: "Settings", icon: "settings", href: "/account", id: "settings" },
+        ],
+      },
     ],
   },
 
@@ -43,28 +71,45 @@ export const PORTALS = {
     active: "bg-white/10 text-white",
     accentBtn: "bg-[#101a38] hover:bg-[#1a2a54] text-white",
     chip: { label: "HEA Admin", cls: "border-blue-200 bg-blue-50 text-blue-700" },
-    user: { name: "Chanda Mwansa", sub: "" },
     search: "Search institutions, programmes, officers, cases...",
-    bellHref: "#",
-    bellCount: 3,
+    bellHref: "/hea/notifications",
     org: {
       title: "Higher Education Authority",
       sub: "Republic of Zambia",
       tagline: "Regulating Quality, Advancing Excellence.",
     },
     nav: [
-      { label: "Dashboard", icon: "dashboard", href: "/hea/dashboard", id: "dashboard" },
-      { label: "Institution Registration", icon: "bank", href: "/hea/institutions", id: "institutions" },
-      { label: "Accreditation Applications", icon: "apps", href: "/hea/institutions", id: "accreditation" },
-      { label: "Programme Accreditation", icon: "registry", href: "/hea/programmes", id: "programmes" },
-      { label: "Institutional Compliance", icon: "clipboardCheck", href: "/hea/compliance", id: "compliance" },
-      { label: "Evidence for ZAQA Validation", icon: "fileText", href: "/hea/evidence", id: "evidence" },
-      { label: "Site Inspections", icon: "clipboard", href: "#", id: "inspections" },
-      { label: "Regulatory Cases", icon: "scale", href: "/hea/cases", id: "cases" },
-      { label: "Enforcement & Sanctions", icon: "bell", href: "/hea/enforcement", id: "enforcement" },
-      { label: "Reports & Analytics", icon: "chart", href: "#", id: "reports" },
-      { label: "Users & Officers", icon: "users", href: "/hea/users", id: "users" },
-      { label: "Settings", icon: "settings", href: "#", id: "settings" },
+      {
+        heading: "Governance",
+        items: [
+          { label: "Dashboard", icon: "dashboard", href: "/hea/dashboard", id: "dashboard" },
+          { label: "Regulatory Cases", icon: "scale", href: "/hea/cases", id: "cases" },
+          { label: "Compliance", icon: "clipboardCheck", href: "/hea/compliance", id: "compliance" },
+          { label: "Enforcement & Sanctions", icon: "bell", href: "/hea/enforcement", id: "enforcement" },
+        ],
+      },
+      {
+        heading: "Qualifications",
+        items: [
+          { label: "Registration Applications", icon: "clipboard", href: "/hea/qualifications", id: "qualifications" },
+          { label: "Programme Accreditation", icon: "registry", href: "/hea/programmes", id: "programmes" },
+        ],
+      },
+      {
+        heading: "Credential Trust",
+        items: [
+          { label: "Evidence for ZAQA", icon: "fileText", href: "/hea/evidence", id: "evidence" },
+          { label: "Disputes", icon: "clock", href: "/hea/disputes", id: "disputes" },
+        ],
+      },
+      {
+        heading: "Administration",
+        items: [
+          { label: "Institutions & Accreditation", icon: "bank", href: "/hea/institutions", id: "institutions" },
+          { label: "Users & Officers", icon: "users", href: "/hea/users", id: "users" },
+          { label: "Settings", icon: "settings", href: "/account", id: "settings" },
+        ],
+      },
     ],
   },
 
@@ -77,62 +122,95 @@ export const PORTALS = {
     active: "bg-emerald-600 text-white",
     accentBtn: "bg-emerald-600 hover:bg-emerald-700 text-white",
     chip: { label: "ECZ Admin", cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-    user: { name: "ECZ Admin", sub: "" },
     search: "Search learners, NRC, certificates, ZAQA requests...",
-    bellHref: "#",
-    bellCount: 3,
+    bellHref: "/ecz/notifications",
     org: {
       title: "Examinations Council of Zambia",
       tagline: "Quality Assessments. Trusted Credentials.",
     },
     nav: [
-      { label: "Dashboard", icon: "dashboard", href: "/ecz/dashboard", id: "dashboard" },
-      { label: "Learner Records", icon: "users", href: "/ecz/learners", id: "learners" },
-      { label: "Results Import", icon: "upload", href: "#", id: "results" },
-      { label: "Certificate Register", icon: "registry", href: "/ecz/certificates", id: "certificates" },
-      { label: "ZAQA Verification Requests", icon: "shieldCheck", href: "/ecz/requests", id: "requests" },
-      { label: "Evidence for ZAQA", icon: "fileText", href: "#", id: "evidence" },
-      { label: "Corrections & Replacements", icon: "refresh", href: "#", id: "corrections" },
-      { label: "Disputes", icon: "clock", href: "#", id: "disputes" },
-      { label: "Audit & Reports", icon: "chart", href: "/ecz/audit", id: "audit" },
-      { label: "User Roles", icon: "user", href: "/ecz/users", id: "users" },
-      { label: "Settings", icon: "settings", href: "#", id: "settings" },
+      {
+        heading: "Governance",
+        items: [
+          { label: "Dashboard", icon: "dashboard", href: "/ecz/dashboard", id: "dashboard" },
+          { label: "Audit & Reports", icon: "chart", href: "/ecz/audit", id: "audit" },
+        ],
+      },
+      {
+        heading: "Qualifications",
+        items: [
+          { label: "Certificate Register", icon: "registry", href: "/ecz/certificates", id: "certificates" },
+          { label: "Registration Applications", icon: "clipboard", href: "/ecz/qualifications", id: "qualifications" },
+        ],
+      },
+      {
+        heading: "Credential Trust",
+        items: [
+          { label: "ZAQA Verification Requests", icon: "shieldCheck", href: "/ecz/requests", id: "requests" },
+          { label: "Disputes & Corrections", icon: "clock", href: "/ecz/disputes", id: "disputes" },
+        ],
+      },
+      {
+        heading: "Administration",
+        items: [
+          { label: "Learner Records", icon: "users", href: "/ecz/learners", id: "learners" },
+          { label: "User Roles", icon: "user", href: "/ecz/users", id: "users" },
+          { label: "Settings", icon: "settings", href: "/account", id: "settings" },
+        ],
+      },
     ],
   },
 
   teveta: {
     id: "teveta",
-    brand: "TEVETA",
-    brandSub: "PORTAL",
+    brand: "BBACVS",
+    brandSub: "TEVETA PORTAL",
     subClass: "text-orange-400",
     sidebar: "bg-[#131c3a]",
     active: "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow",
     accentBtn: "bg-orange-500 hover:bg-orange-600 text-white",
     chip: { label: "TEVETA Admin", cls: "border-blue-200 bg-blue-50 text-blue-700" },
-    user: { name: "Chanda Mwanza", sub: "Super Admin" },
-    search: "Search candidates, applications, trades, assessors...",
-    bellHref: "#",
-    bellCount: 12,
+    search: "Search institutions, programmes, qualifications...",
+    bellHref: "/teveta/notifications",
     org: {
       title: "Technical Education, Vocational and Entrepreneurship Training Authority",
       sub: "Republic of Zambia",
       tagline: "Skilling Zambia, Enabling Prosperity.",
     },
     nav: [
-      { label: "Dashboard", icon: "dashboard", href: "/teveta/dashboard", id: "dashboard" },
-      { label: "RPL Applications", icon: "apps", href: "/teveta/dashboard", id: "rpl" },
-      { label: "Trade Testing", icon: "clipboardCheck", href: "#", id: "trade-testing" },
-      { label: "Skills Assessments", icon: "checkCircle", href: "#", id: "skills" },
-      { label: "Candidates", icon: "users", href: "#", id: "candidates" },
-      { label: "Assessors", icon: "user", href: "#", id: "assessors" },
-      { label: "Qualifications Registry", icon: "registry", href: "/teveta/qualifications", id: "qualifications" },
-      { label: "Programme Accreditation", icon: "award", href: "/teveta/programmes", id: "programmes" },
-      { label: "Certification Records", icon: "file", href: "/teveta/certification", id: "certification" },
-      { label: "Evidence Repository", icon: "folder", href: "#", id: "evidence" },
-      { label: "Scheduling & Calendar", icon: "calendar", href: "#", id: "calendar" },
-      { label: "Reports & Analytics", icon: "chart", href: "#", id: "reports" },
-      { label: "Quality Assurance", icon: "shieldCheck", href: "#", id: "qa" },
-      { label: "Settings", icon: "settings", href: "#", id: "settings" },
+      {
+        heading: "Governance",
+        items: [
+          { label: "Dashboard", icon: "dashboard", href: "/teveta/dashboard", id: "dashboard" },
+        ],
+      },
+      {
+        heading: "Qualifications",
+        items: [
+          { label: "Qualifications Registry", icon: "registry", href: "/teveta/qualifications", id: "qualifications" },
+          { label: "Programme Accreditation", icon: "award", href: "/teveta/programmes", id: "programmes" },
+        ],
+      },
+      {
+        heading: "Recognition",
+        items: [
+          { label: "RPL Applications", icon: "checkCircle", href: "/teveta/rpl", id: "rpl" },
+        ],
+      },
+      {
+        heading: "Credential Trust",
+        items: [
+          { label: "Certification Records", icon: "file", href: "/teveta/certification", id: "certification" },
+          { label: "Disputes", icon: "clock", href: "/teveta/disputes", id: "disputes" },
+        ],
+      },
+      {
+        heading: "Administration",
+        items: [
+          { label: "Users & Officers", icon: "users", href: "/teveta/users", id: "users" },
+          { label: "Settings", icon: "settings", href: "/account", id: "settings" },
+        ],
+      },
     ],
   },
 
@@ -144,26 +222,43 @@ export const PORTALS = {
     sidebar: "bg-[#0c2b4a]",
     active: "bg-blue-600 text-white",
     accentBtn: "bg-blue-600 hover:bg-blue-700 text-white",
-    chip: { label: "Institution Admin", cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-    user: { name: "Alice Banda", sub: "Admin Officer" },
-    search: "Search learners, NRC, certificates, requests...",
-    bellHref: "#",
-    bellCount: 5,
+    chip: { label: "Institution", cls: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+    search: "Search credentials, applications, programmes...",
+    bellHref: "/institution/notifications",
     org: {
-      title: "Examinations Council of Zambia",
-      tagline: "Quality Assessments. Trusted Credentials. Nationwide Impact.",
+      title: "Accredited Institution",
+      tagline: "Issue trusted, blockchain-anchored credentials.",
     },
     nav: [
-      { label: "Dashboard", icon: "dashboard", href: "/institution", id: "dashboard" },
-      { label: "Learner Records", icon: "users", href: "#", id: "learners" },
-      { label: "Results Submission", icon: "upload", href: "#", id: "results" },
-      { label: "Credential Issuance", icon: "award", href: "#", id: "issuance" },
-      { label: "Evidence Submission & ZAQA Requests", icon: "fileText", href: "/institution/evidence", id: "evidence" },
-      { label: "ZAQA Verification Requests", icon: "shieldCheck", href: "#", id: "verification" },
-      { label: "Corrections & Appeals", icon: "edit", href: "#", id: "corrections" },
-      { label: "Audit & Reports", icon: "chart", href: "#", id: "audit" },
-      { label: "User Management & Roles", icon: "user", href: "/institution/users", id: "users" },
-      { label: "Settings", icon: "settings", href: "#", id: "settings" },
+      {
+        heading: "Overview",
+        items: [
+          { label: "Dashboard", icon: "dashboard", href: "/institution", id: "dashboard" },
+        ],
+      },
+      {
+        heading: "Qualifications",
+        items: [
+          { label: "Qualification Proposals", icon: "clipboard", href: "/institution/qualifications", id: "qualifications" },
+          { label: "Programmes", icon: "registry", href: "/institution/programmes", id: "programmes" },
+        ],
+      },
+      {
+        heading: "Credential Trust",
+        items: [
+          { label: "Credential Issuance", icon: "award", href: "/issuer/classic", id: "issuance" },
+          { label: "Graduate Applications", icon: "apps", href: "/institution/applications", id: "applications" },
+          { label: "Evidence & ZAQA Requests", icon: "fileText", href: "/institution/evidence", id: "evidence" },
+          { label: "Disputes & Corrections", icon: "edit", href: "/institution/disputes", id: "disputes" },
+        ],
+      },
+      {
+        heading: "Administration",
+        items: [
+          { label: "Billing & Invoices", icon: "file", href: "/billing", id: "billing" },
+          { label: "Settings", icon: "settings", href: "/account", id: "settings" },
+        ],
+      },
     ],
   },
 
@@ -176,24 +271,49 @@ export const PORTALS = {
     active: "bg-emerald-600 text-white",
     accentBtn: "bg-emerald-600 hover:bg-emerald-700 text-white",
     chip: null,
-    user: { name: "Phiri, Barbrah", sub: "BBACVS/2024/0002158" },
     search: "Search credentials, issuers, or requests...",
-    bellHref: "#",
-    bellCount: 5,
+    bellHref: "/graduate/notifications",
     org: {
       title: "Trusted. Secure. Verified.",
       tagline: "BBACVS credentials are securely issued and verifiable anytime, anywhere.",
     },
     nav: [
-      { label: "Dashboard", icon: "dashboard", href: "/graduate", id: "dashboard" },
-      { label: "My Credentials", icon: "registry", href: "/graduate", id: "credentials" },
-      { label: "Verification Activity", icon: "shieldCheck", href: "/graduate/verification", id: "verification" },
-      { label: "Share Credential", icon: "share", href: "#", id: "share" },
-      { label: "Correction Requests", icon: "edit", href: "#", id: "corrections" },
-      { label: "Disputes", icon: "scale", href: "#", id: "disputes" },
-      { label: "Downloads", icon: "download", href: "#", id: "downloads" },
-      { label: "Notifications", icon: "bell", href: "#", id: "notifications", badge: 5 },
-      { label: "Settings", icon: "settings", href: "#", id: "settings" },
+      {
+        heading: "Overview",
+        items: [
+          { label: "My Credentials", icon: "registry", href: "/graduate", id: "dashboard" },
+        ],
+      },
+      {
+        heading: "Recognition",
+        items: [
+          { label: "Apply for Credential", icon: "clipboard", href: "/graduate/apply", id: "apply" },
+        ],
+      },
+      {
+        heading: "Credential Trust",
+        items: [
+          { label: "Verification Activity", icon: "shieldCheck", href: "/graduate/verification", id: "verification" },
+          { label: "Corrections & Disputes", icon: "scale", href: "/graduate/disputes", id: "disputes" },
+        ],
+      },
+      {
+        heading: "Administration",
+        items: [
+          { label: "Billing & Receipts", icon: "file", href: "/billing", id: "billing" },
+          { label: "Notifications", icon: "bell", href: "/graduate/notifications", id: "notifications" },
+          { label: "Settings", icon: "settings", href: "/account", id: "settings" },
+        ],
+      },
     ],
   },
 };
+
+// Flat list of nav destinations for a portal — used by the topbar quick-search.
+export function navIndex(portalId) {
+  const p = PORTALS[portalId];
+  if (!p) return [];
+  return p.nav.flatMap((group) =>
+    group.items.map((item) => ({ ...item, heading: group.heading }))
+  );
+}

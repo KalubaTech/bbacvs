@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Icon from "./icons";
 
 /* ---------------------------------------------------------------- tones --- */
@@ -201,14 +204,48 @@ export function TabBar({ tabs, active, onChange, accent = "border-blue-600 text-
 
 /* --------------------------------------------------------------- filters --- */
 
-export function SelectPill({ label, className = "" }) {
+/**
+ * Filter pill backed by a real <select>. `options` is an array of strings or
+ * {value, label}. When a value is chosen the pill shows "label: value".
+ * Without `options`/`onChange` it renders as a static pill (legacy call sites).
+ */
+export function SelectPill({ label, value, options, onChange, allLabel, className = "" }) {
+  const interactive = Array.isArray(options) && options.length > 0;
+  const norm = interactive
+    ? options.map((o) => (typeof o === "string" ? { value: o, label: o } : o))
+    : [];
+  const current = norm.find((o) => String(o.value) === String(value));
+  const display = current && current.value !== "" ? `${label}: ${current.label}` : label;
   return (
-    <button
-      className={`inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-[13px] font-medium text-slate-600 hover:bg-slate-50 ${className}`}
-    >
-      {label}
-      <Icon name="chevronDown" className="h-3.5 w-3.5 text-slate-400" />
-    </button>
+    <span className={`relative inline-flex ${className}`}>
+      <span
+        className={`inline-flex w-full items-center gap-2 rounded-lg border px-3.5 py-2 text-[13px] font-medium ${
+          current && current.value !== ""
+            ? "border-blue-200 bg-blue-50 text-blue-700"
+            : "border-slate-200 bg-white text-slate-600"
+        } ${interactive ? "hover:bg-slate-50" : ""}`}
+      >
+        <span className="truncate">{display}</span>
+        <Icon name="chevronDown" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+      </span>
+      {interactive && (
+        <select
+          aria-label={label}
+          value={value ?? ""}
+          onChange={(e) => onChange?.(e.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        >
+          <option value="">{allLabel || `${label}: All`}</option>
+          {norm
+            .filter((o) => o.value !== "")
+            .map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+        </select>
+      )}
+    </span>
   );
 }
 
@@ -241,10 +278,10 @@ export function ToolButton({ icon, children, tone = "outline", className = "", .
 
 /* ----------------------------------------------------------------- table --- */
 
-export function DataTable({ columns, rows, rowKey, activeKey, onRowClick, footer, dense }) {
+export function DataTable({ columns, rows, rowKey, activeKey, onRowClick, footer, dense, loading, emptyText = "No records yet.", minWidth = "min-w-[560px]" }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse text-left">
+      <table className={`w-full ${minWidth} border-collapse text-left`}>
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50/60">
             {columns.map((c) => (
@@ -255,7 +292,24 @@ export function DataTable({ columns, rows, rowKey, activeKey, onRowClick, footer
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => {
+          {loading &&
+            [0, 1, 2, 3, 4].map((i) => (
+              <tr key={`skeleton-${i}`} className="border-b border-slate-100">
+                {columns.map((c) => (
+                  <td key={c.key} className={`px-3.5 ${dense ? "py-2" : "py-3"}`}>
+                    <span className="block h-3.5 max-w-[140px] animate-pulse rounded bg-slate-100" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          {!loading && rows.length === 0 && (
+            <tr>
+              <td colSpan={columns.length} className="px-3.5 py-10 text-center text-[13px] text-slate-400">
+                {emptyText}
+              </td>
+            </tr>
+          )}
+          {!loading && rows.map((row, i) => {
             const k = rowKey ? row[rowKey] : i;
             const isActive = activeKey != null && k === activeKey;
             return (
@@ -281,39 +335,89 @@ export function DataTable({ columns, rows, rowKey, activeKey, onRowClick, footer
   );
 }
 
-export function Pagination({ summary, page = 1, pages = 1, className = "" }) {
+export function Pagination({ summary, page = 1, pages = 1, onPageChange, className = "" }) {
+  // Window of up to 5 page numbers centred on the current page.
+  const start = Math.max(1, Math.min(page - 2, pages - 4));
   const nums = [];
-  for (let i = 1; i <= Math.min(pages, 5); i++) nums.push(i);
+  for (let i = start; i <= Math.min(pages, start + 4); i++) nums.push(i);
+  const go = (n) => {
+    if (n >= 1 && n <= pages && n !== page) onPageChange?.(n);
+  };
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 px-3.5 py-3 ${className}`}>
       <span className="text-[12px] text-slate-500">{summary}</span>
       <div className="flex items-center gap-1">
-        <PageBtn><Icon name="chevronLeft" className="h-3.5 w-3.5" /></PageBtn>
-        {nums.map((n) => (
-          <PageBtn key={n} active={n === page}>{n}</PageBtn>
-        ))}
-        {pages > 6 && (
+        <PageBtn onClick={() => go(page - 1)} disabled={page <= 1} label="Previous page">
+          <Icon name="chevronLeft" className="h-3.5 w-3.5" />
+        </PageBtn>
+        {start > 1 && (
           <>
-            <span className="px-1 text-slate-400">…</span>
-            <PageBtn>{pages}</PageBtn>
+            <PageBtn onClick={() => go(1)} label="Page 1">1</PageBtn>
+            {start > 2 && <span className="px-1 text-slate-400">…</span>}
           </>
         )}
-        <PageBtn><Icon name="chevronRight" className="h-3.5 w-3.5" /></PageBtn>
+        {nums.map((n) => (
+          <PageBtn key={n} active={n === page} onClick={() => go(n)} label={`Page ${n}`}>{n}</PageBtn>
+        ))}
+        {nums[nums.length - 1] < pages && (
+          <>
+            {nums[nums.length - 1] < pages - 1 && <span className="px-1 text-slate-400">…</span>}
+            <PageBtn onClick={() => go(pages)} label={`Page ${pages}`}>{pages}</PageBtn>
+          </>
+        )}
+        <PageBtn onClick={() => go(page + 1)} disabled={page >= pages} label="Next page">
+          <Icon name="chevronRight" className="h-3.5 w-3.5" />
+        </PageBtn>
       </div>
     </div>
   );
 }
 
-function PageBtn({ active, children }) {
+function PageBtn({ active, disabled, onClick, label, children }) {
   return (
     <button
-      className={`flex h-7 min-w-[28px] items-center justify-center rounded-md border px-1.5 text-[12px] font-medium ${
-        active ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      }`}
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      className={`flex h-7 min-w-[28px] items-center justify-center rounded-md border px-1.5 text-[12px] font-medium transition ${
+        active
+          ? "border-blue-600 bg-blue-600 text-white"
+          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+      } ${disabled ? "cursor-not-allowed opacity-40 hover:bg-white" : ""}`}
     >
       {children}
     </button>
   );
+}
+
+/**
+ * Client-side pagination helper: returns the visible slice plus props for
+ * <Pagination>. Usage:
+ *   const pg = usePager(filteredRows, 10);
+ *   <DataTable rows={pg.rows} footer={<Pagination {...pg.props} />} />
+ */
+export function usePager(rows, perPage = 10, deps = []) {
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(rows.length / perPage));
+  const current = Math.min(page, pages);
+  // Reset to page 1 when the row set shrinks below the current page or deps change.
+  useEffect(() => {
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.length, ...deps]);
+  const startIdx = (current - 1) * perPage;
+  const slice = rows.slice(startIdx, startIdx + perPage);
+  const summary = rows.length
+    ? `Showing ${startIdx + 1}–${startIdx + slice.length} of ${rows.length}`
+    : "No records";
+  return {
+    rows: slice,
+    page: current,
+    pages,
+    props: { summary, page: current, pages, onPageChange: setPage },
+  };
 }
 
 /* -------------------------------------------------------------- progress --- */
@@ -406,7 +510,12 @@ export function KV({ label, value, className = "" }) {
   );
 }
 
-const KV_COLS = { 1: "grid-cols-1", 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4" };
+const KV_COLS = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-2 md:grid-cols-3",
+  4: "grid-cols-2 md:grid-cols-4",
+};
 
 export function KVGrid({ items, cols = 2, className = "" }) {
   return (
@@ -458,9 +567,11 @@ export function PanelHeader({ title, badge, onClose }) {
         <h2 className="text-[15px] font-bold text-slate-900">{title}</h2>
         {badge}
       </div>
-      <button className="text-slate-400 hover:text-slate-600" aria-label="Close">
-        <Icon name="x" className="h-[18px] w-[18px]" />
-      </button>
+      {onClose && (
+        <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Close">
+          <Icon name="x" className="h-[18px] w-[18px]" />
+        </button>
+      )}
     </div>
   );
 }
@@ -495,11 +606,27 @@ export function ActionBtn({ tone = "outline", icon, full, className = "", childr
   );
 }
 
-export function Toggle({ on = true, tone = "bg-emerald-500" }) {
+export function Toggle({ on = true, tone = "bg-emerald-500", onChange, disabled, label }) {
+  const interactive = !!onChange && !disabled;
+  const Tag = onChange ? "button" : "span";
   return (
-    <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${on ? tone : "bg-slate-200"}`}>
+    <Tag
+      {...(onChange
+        ? {
+            type: "button",
+            role: "switch",
+            "aria-checked": on,
+            "aria-label": label,
+            disabled,
+            onClick: () => onChange(!on),
+          }
+        : {})}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${on ? tone : "bg-slate-200"} ${
+        interactive ? "cursor-pointer" : ""
+      } ${disabled ? "opacity-50" : ""}`}
+    >
       <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${on ? "translate-x-[18px]" : "translate-x-0.5"}`} />
-    </span>
+    </Tag>
   );
 }
 
@@ -517,4 +644,73 @@ export function FileRow({ name, size, verified, icon = "file", tone = "softred" 
         (verified ? <Badge tone="green" icon="check">Verified</Badge> : <Icon name="download" className="h-4 w-4 text-slate-400" />)}
     </div>
   );
+}
+
+/* ----------------------------------------------------------------- modal --- */
+
+export function Modal({ open, onClose, title, badge, footer, width = "max-w-lg", children }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && onClose?.();
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
+      <div className="fixed inset-0 bg-slate-900/40" onClick={onClose} />
+      <div className={`relative z-10 my-auto w-full ${width} rounded-xl border border-slate-200 bg-white p-5 shadow-xl`}>
+        <PanelHeader title={title} badge={badge} onClose={onClose} />
+        <div className="max-h-[70vh] overflow-y-auto">{children}</div>
+        {footer && <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-4">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------- error banner --- */
+
+export function ErrorBanner({ error, onRetry, className = "" }) {
+  if (!error) return null;
+  return (
+    <div className={`mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 ${className}`} role="alert">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <Icon name="x" className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+        <div className="min-w-0 text-[13px] text-red-700">{String(error)}</div>
+      </div>
+      {onRetry && (
+        <button type="button" onClick={onRetry} className="shrink-0 text-[12px] font-semibold text-red-700 underline hover:text-red-800">
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- csv export --- */
+
+/**
+ * Export table data as CSV. `columns` is [{key, label, csv?}] — `csv(row)`
+ * overrides the cell value (use it where `render` returns JSX).
+ */
+export function exportCSV(filename, columns, rows) {
+  const esc = (v) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const head = columns.map((c) => esc(c.label)).join(",");
+  const body = rows.map((r) => columns.map((c) => esc(c.csv ? c.csv(r) : r[c.key])).join(",")).join("\n");
+  const blob = new Blob([`${head}\n${body}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".csv") ? filename : `${filename}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }

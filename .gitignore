@@ -38,3 +38,6 @@ npm-debug.log*
 # test / coverage
 coverage/
 .nyc_output/
+
+# verification builds
+web/.next-verify/

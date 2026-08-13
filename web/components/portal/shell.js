@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Icon from "./icons";
-import { PORTALS } from "./theme";
+import { PORTALS, navIndex } from "./theme";
 import { Avatar } from "./kit";
-import { clearAuth } from "../../lib/auth";
+import { clearAuth, getToken, getUser } from "../../lib/auth";
+import { api } from "../../lib/api";
 
-// xl-only widths for the detail panel (base is w-full when stacked on small screens).
+// xl-only widths for the detail panel (base is a slide-over on small screens).
 // Keys must stay literal so Tailwind's JIT generates the classes.
 const PANEL_XL = {
   "w-[380px]": "xl:w-[380px]",
@@ -28,8 +29,21 @@ const CLASSIC = {
   graduate: "/student/classic",
 };
 
-// Full-bleed portal chrome: collapsible dark sidebar, white topbar with user menu,
-// content area and optional right-hand detail panel.
+const ROLE_LABEL = {
+  admin: "Platform Admin",
+  zaqa: "ZAQA Officer",
+  hea: "HEA Officer",
+  teveta: "TEVETA Officer",
+  ecz: "ECZ Officer",
+  issuer: "Institution Officer",
+  holder: "Graduate",
+};
+
+const NAV_STORE = "bbacvs_portal_nav";
+
+// Full-bleed portal chrome: collapsible dark sidebar with grouped navigation,
+// white topbar with quick-search / live notifications / user menu, content
+// area and optional right-hand detail panel (slide-over below xl).
 export default function PortalShell({
   portal,
   active,
@@ -38,34 +52,114 @@ export default function PortalShell({
   actions,
   children,
   panel,
+  panelKey,   // optional stable key for the selected record — auto-opens the small-screen slide-over when it changes
   panelWidth = "w-[400px]",
   contentClass = "",
-  user,       // optional {name, sub} — overrides the theme's placeholder user
-  bellCount,  // optional live notification count
+  user,       // optional {name, sub} — overrides the logged-in user
+  bellCount,  // optional live notification count override
 }) {
   const router = useRouter();
   // Sidebar visibility: null = auto (hidden on mobile, shown on lg+); true/false = user override.
   const [nav, setNav] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const [authUser, setAuthUser] = useState(null);
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const searchRef = useRef(null);
+
+  // Restore the user's sidebar preference so it survives navigation.
+  useEffect(() => {
+    const stored = sessionStorage.getItem(NAV_STORE);
+    if (stored === "open") setNav(true);
+    else if (stored === "closed") setNav(false);
+  }, []);
+
+  useEffect(() => {
+    setAuthUser(getUser());
+  }, []);
+
+  // Live unread notification count, refreshed every 60s.
+  useEffect(() => {
+    if (bellCount != null) return;
+    const token = getToken();
+    if (!token) return;
+    let stop = false;
+    const load = () =>
+      api
+        .myNotifications(token)
+        .then((d) => !stop && setUnread(d.unread ?? (d.notifications || []).filter((n) => !n.read).length))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
+  }, [bellCount]);
+
+  // Auto-open the small-screen details slide-over when a new record is selected.
+  useEffect(() => {
+    if (panelKey != null) setPanelOpen(true);
+  }, [panelKey]);
+
+  // ⌘K / Ctrl+K focuses the quick-search.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   function toggleNav() {
     const desktop = window.matchMedia("(min-width: 1024px)").matches;
-    setNav((prev) => (prev == null ? !desktop : !prev));
+    setNav((prev) => {
+      const next = prev == null ? !desktop : !prev;
+      sessionStorage.setItem(NAV_STORE, next ? "open" : "closed");
+      return next;
+    });
   }
   function closeMobileNav() {
     if (!window.matchMedia("(min-width: 1024px)").matches) setNav(false);
   }
-  const base = PORTALS[portal];
-  const t = {
-    ...base,
-    user: user || base.user,
-    bellCount: bellCount == null ? base.bellCount : bellCount,
-  };
+
+  const t = PORTALS[portal];
+  const displayUser =
+    user ||
+    (authUser
+      ? { name: authUser.name || authUser.email, sub: ROLE_LABEL[authUser.role] || authUser.role }
+      : { name: "…", sub: "" });
+  const bell = bellCount == null ? unread : bellCount;
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return navIndex(portal)
+      .filter((it) => `${it.heading} ${it.label}`.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [portal, query]);
+
+  function goTo(href) {
+    setQuery("");
+    setSearchOpen(false);
+    router.push(href);
+  }
 
   function signOut() {
     clearAuth();
     router.push("/login");
   }
+
+  const panelBody = (
+    <div className="p-4 sm:p-5 xl:sticky xl:top-16 xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto [scrollbar-width:thin]">
+      {panel}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -89,28 +183,37 @@ export default function PortalShell({
             <div className={`text-[11px] font-bold tracking-widest ${t.subClass}`}>{t.brandSub}</div>
           </div>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2 [scrollbar-width:thin]">
-          {t.nav.map((item) => {
-            const isActive = item.id === active;
-            return (
-              <Link
-                key={item.label}
-                href={item.href || "#"}
-                onClick={closeMobileNav}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition ${
-                  isActive ? t.active : "text-slate-300/80 hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <Icon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
-                <span className="truncate">{item.label}</span>
-                {item.badge ? (
-                  <span className="ml-auto rounded-full bg-emerald-500 px-1.5 text-[10px] font-bold leading-4 text-white">
-                    {item.badge}
-                  </span>
-                ) : null}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:thin]">
+          {t.nav.map((group) => (
+            <div key={group.heading} className="mb-3">
+              <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400/80">
+                {group.heading}
+              </div>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const isActive = item.id === active;
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      onClick={closeMobileNav}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition ${
+                        isActive ? t.active : "text-slate-300/80 hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      <Icon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                      {item.badge ? (
+                        <span className="ml-auto rounded-full bg-emerald-500 px-1.5 text-[10px] font-bold leading-4 text-white">
+                          {item.badge}
+                        </span>
+                      ) : null}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
         <div className="p-3">
           <div className="rounded-xl border border-white/10 bg-white/5 p-3.5">
@@ -142,20 +245,54 @@ export default function PortalShell({
           <div className="relative hidden max-w-xl flex-1 md:block">
             <Icon name="search" className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && matches[0]) goTo(matches[0].href);
+                if (e.key === "Escape") {
+                  setQuery("");
+                  setSearchOpen(false);
+                  e.target.blur();
+                }
+              }}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-14 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:outline-none"
               placeholder={t.search}
-              readOnly
             />
             <span className="absolute right-3 top-2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
               ⌘ K
             </span>
+            {searchOpen && matches.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-40 mt-1.5 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                {matches.map((m) => (
+                  <button
+                    key={`${m.heading}-${m.id}`}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      goTo(m.href);
+                    }}
+                    className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-slate-700 hover:bg-slate-50"
+                  >
+                    <Icon name={m.icon} className="h-4 w-4 text-slate-400" />
+                    <span className="flex-1 truncate">{m.label}</span>
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{m.heading}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="ml-auto flex items-center gap-3">
-            <Link href={t.bellHref || "#"} className="relative text-slate-500 hover:text-slate-700" aria-label="Notifications">
+            <Link href={t.bellHref} className="relative text-slate-500 hover:text-slate-700" aria-label="Notifications">
               <Icon name="bell" className="h-5 w-5" />
-              {t.bellCount ? (
+              {bell ? (
                 <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                  {t.bellCount}
+                  {bell}
                 </span>
               ) : null}
             </Link>
@@ -167,10 +304,10 @@ export default function PortalShell({
             )}
             <div className="relative">
               <button className="flex items-center gap-2" onClick={() => setMenuOpen((o) => !o)}>
-                <Avatar name={t.user.name} size="h-8 w-8" />
+                <Avatar name={displayUser.name} size="h-8 w-8" />
                 <span className="hidden text-left leading-tight lg:block">
-                  <span className="block max-w-[180px] truncate text-[13px] font-semibold text-slate-800">{t.user.name}</span>
-                  {t.user.sub && <span className="block max-w-[180px] truncate text-[11px] text-slate-400">{t.user.sub}</span>}
+                  <span className="block max-w-[180px] truncate text-[13px] font-semibold text-slate-800">{displayUser.name}</span>
+                  {displayUser.sub && <span className="block max-w-[180px] truncate text-[11px] text-slate-400">{displayUser.sub}</span>}
                 </span>
                 <Icon name="chevronDown" className={`h-4 w-4 text-slate-400 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
               </button>
@@ -179,8 +316,8 @@ export default function PortalShell({
                   <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
                   <div className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg">
                     <div className="border-b border-slate-100 px-4 py-2.5">
-                      <div className="truncate text-[13px] font-semibold text-slate-800">{t.user.name}</div>
-                      {t.user.sub && <div className="truncate text-[11px] text-slate-400">{t.user.sub}</div>}
+                      <div className="truncate text-[13px] font-semibold text-slate-800">{displayUser.name}</div>
+                      {displayUser.sub && <div className="truncate text-[11px] text-slate-400">{displayUser.sub}</div>}
                     </div>
                     <Link
                       href="/account"
@@ -211,7 +348,7 @@ export default function PortalShell({
           </div>
         </header>
 
-        {/* Content + optional detail panel: side-by-side on xl, stacked below on smaller screens */}
+        {/* Content + optional detail panel: side column on xl, slide-over below */}
         <div className="flex flex-col xl:flex-row xl:items-stretch">
           <main className={`min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6 ${contentClass}`}>
             {(title || actions) && (
@@ -226,15 +363,46 @@ export default function PortalShell({
             {children}
           </main>
           {panel && (
-            <aside
-              className={`w-full shrink-0 border-t border-slate-200 bg-white xl:border-l xl:border-t-0 ${
-                PANEL_XL[panelWidth] || "xl:w-[400px]"
-              }`}
-            >
-              <div className="p-4 sm:p-5 xl:sticky xl:top-16 xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto [scrollbar-width:thin]">
-                {panel}
-              </div>
-            </aside>
+            <>
+              {/* xl+: sticky side column */}
+              <aside
+                className={`hidden w-full shrink-0 border-l border-slate-200 bg-white xl:block ${
+                  PANEL_XL[panelWidth] || "xl:w-[400px]"
+                }`}
+              >
+                {panelBody}
+              </aside>
+
+              {/* below xl: floating trigger + right slide-over */}
+              {!panelOpen && (
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen(true)}
+                  className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-[13px] font-semibold text-white shadow-lg xl:hidden"
+                >
+                  <Icon name="chevronLeft" className="h-4 w-4" />
+                  Details
+                </button>
+              )}
+              {panelOpen && (
+                <div className="fixed inset-0 z-40 xl:hidden">
+                  <div className="absolute inset-0 bg-slate-900/40" onClick={() => setPanelOpen(false)} />
+                  <div className="absolute inset-y-0 right-0 w-full max-w-md overflow-y-auto bg-white shadow-xl">
+                    <div className="flex justify-end px-4 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setPanelOpen(false)}
+                        className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
+                        aria-label="Close details"
+                      >
+                        <Icon name="x" className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {panelBody}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

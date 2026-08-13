@@ -21,8 +21,8 @@ export function Donut({ segments, size = 150, thickness = 20, centerTitle, cente
   const gap = segments.length > 1 ? 2.5 : 0; // px gap between segments
   let offset = -circ / 4; // start at 12 o'clock
   return (
-    <div className="relative inline-block" style={{ width: size, height: size }}>
-      <svg width={size} height={size}>
+    <div className="relative inline-block w-full" style={{ maxWidth: size }}>
+      <svg viewBox={`0 0 ${size} ${size}`} className="h-auto w-full">
         {segments.map((seg, i) => {
           const len = (seg.value / total) * circ;
           const el = (
@@ -184,7 +184,7 @@ export function Sparkline({ points, color = CHART.green, width = 90, height = 28
   const x = (i) => (i * (width - 4)) / (points.length - 1) + 2;
   const y = (v) => 2 + (height - 4) * (1 - (v - min) / (max - min || 1));
   return (
-    <svg width={width} height={height}>
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" style={{ maxWidth: width }}>
       <polyline
         points={points.map((v, i) => `${x(i)},${y(v)}`).join(" ")}
         fill="none"
