@@ -21,6 +21,7 @@ function issuerView(i) {
     sector: i.sector, status: i.heaStatus || "approved", note: i.heaNote,
     onChain: i.onChain, zaqaTrusted: !!i.zaqaTrusted, selfRegistered: !!i.selfRegistered,
     hasAccreditationDoc: !!i.accreditationCid, approvedBy: i.approvedBy, createdAt: i.createdAt,
+    events: i.events || [],
   };
 }
 

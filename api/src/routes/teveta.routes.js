@@ -33,6 +33,7 @@ function issuerView(i) {
     selfRegistered: !!i.selfRegistered,
     hasAccreditationDoc: !!i.accreditationCid,
     approvedBy: i.approvedBy,
+    events: i.events || [],
     createdAt: i.createdAt,
   };
 }
@@ -230,6 +231,28 @@ router.get("/monitoring", ...tevetaOnly, async (_req, res, next) => {
         credentialHash: r.credentialHash, institution: r.institution, subjectName: r.subjectName,
         qualification: r.qualification, credentialType: r.credentialType, zqfLevel: r.zqfLevel,
         status: r.status, issuedAt: r.issuedAt,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/teveta/credentials — sector-scoped credential register (certification
+// records workspace). ?status= filters lifecycle state, ?zaqaValidation= the
+// national validation state.
+router.get("/credentials", ...tevetaOnly, async (req, res, next) => {
+  try {
+    const tevetInstitutions = await Issuer.find({ sector: "tevet" }).select("_id").lean();
+    const q = { issuer: { $in: tevetInstitutions.map((i) => i._id) } };
+    if (req.query.status) q.status = req.query.status;
+    if (req.query.zaqaValidation) q.zaqaValidation = req.query.zaqaValidation;
+    const rows = await CredentialIndex.find(q).sort({ createdAt: -1 }).limit(200).lean();
+    res.json({
+      credentials: rows.map((r) => ({
+        credentialHash: r.credentialHash, institution: r.institution, subjectName: r.subjectName,
+        qualification: r.qualification, credentialType: r.credentialType, zqfLevel: r.zqfLevel,
+        status: r.status, zaqaValidation: r.zaqaValidation, zaqaRef: r.zaqaRef,
+        suspension: r.suspension, supersededBy: r.supersededBy, reasonCode: r.reasonCode,
+        issuedAt: r.issuedAt, events: r.events || [],
       })),
     });
   } catch (err) { next(err); }

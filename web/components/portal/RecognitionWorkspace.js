@@ -112,8 +112,9 @@ function EvidencePicker({ files, setFiles, max = 3, onError }) {
   async function addFiles(e) {
     const picked = Array.from(e.target.files || []);
     e.target.value = ""; // allow re-picking the same file
+    let count = files.length;
     for (const f of picked) {
-      if (files.length + 1 > max) {
+      if (count >= max) {
         onError?.(`You can attach at most ${max} documents here.`);
         return;
       }
@@ -123,6 +124,7 @@ function EvidencePicker({ files, setFiles, max = 3, onError }) {
       }
       try {
         const ev = await readFileAsEvidence(f);
+        count += 1;
         setFiles((prev) => (prev.length >= max ? prev : [...prev, { ...ev, description: "", size: f.size }]));
       } catch (err) {
         onError?.(err.message);

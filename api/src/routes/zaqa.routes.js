@@ -66,6 +66,7 @@ router.get("/registry", ...zaqaOnly, async (_req, res, next) => {
         id: i._id, institution: i.institution, did: i.did, walletAddress: i.walletAddress,
         sector: i.sector, heaStatus: i.heaStatus || "approved", onChain: i.onChain,
         zaqaTrusted: !!i.zaqaTrusted, zaqaNote: i.zaqaNote, createdAt: i.createdAt,
+        events: i.events || [],
       })),
     });
   } catch (err) { next(err); }

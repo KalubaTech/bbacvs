@@ -146,6 +146,7 @@ export const api = {
       token, method: "PATCH", body: JSON.stringify({ accreditedPrograms }),
     }),
   heaMonitoring: (token) => request(`/api/hea/monitoring`, { token }),
+  heaCredentials: (token, params = "") => request(`/api/hea/credentials${params}`, { token }),
 
   // TEVETA — TEVET (technical/vocational) regulator
   tevetaInstitutions: (token) => request(`/api/teveta/institutions`, { token }),
@@ -165,6 +166,7 @@ export const api = {
       token, method: "PATCH", body: JSON.stringify({ accreditedPrograms }),
     }),
   tevetaMonitoring: (token) => request(`/api/teveta/monitoring`, { token }),
+  tevetaCredentials: (token, params = "") => request(`/api/teveta/credentials${params}`, { token }),
   async tevetaAccreditationCertificate(token, id) {
     const res = await fetch(`${BASE}/api/teveta/institutions/${id}/accreditation-certificate`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -189,6 +191,8 @@ export const api = {
     }),
   zaqaValidationList: (token, status) =>
     request(`/api/zaqa/validation${status ? `?status=${status}` : ""}`, { token }),
+  zaqaCredentialsByStatus: (token, credStatus) =>
+    request(`/api/zaqa/validation?credStatus=${credStatus}`, { token }),
   zaqaSetValidation: (token, hash, body) =>
     request(`/api/zaqa/validation/${hash}`, { token, method: "PATCH", body: JSON.stringify(body) }),
   zaqaRevoke: (token, hash, reasonCode = 4) =>
