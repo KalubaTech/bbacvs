@@ -95,10 +95,17 @@ export default function Home() {
               Verify a credential
             </Link>
             <Link
+              href="/qualifications"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-5 py-2.5 text-[13px] font-semibold text-white transition hover:bg-white/20"
+            >
+              <Icon name="search" className="h-4 w-4" />
+              Search qualifications
+            </Link>
+            <Link
               href="/login"
               className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-5 py-2.5 text-[13px] font-semibold text-white transition hover:bg-white/20"
             >
-              Sign in
+              Access portal
             </Link>
           </div>
           <div className="mt-8 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-slate-300">

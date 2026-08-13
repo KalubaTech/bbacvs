@@ -11,6 +11,7 @@ import { fetchByCid } from "../services/ipfs.service.js";
 import { buildAccreditationCertificate } from "../services/accreditationCert.service.js";
 import { notifyIssuerOfficers } from "../services/notify.service.js";
 import { logActivity } from "../services/activity.service.js";
+import { pushEvent } from "../services/history.service.js";
 
 const router = Router();
 const heaOnly = [requireAuth, requireRole(ROLES.HEA, ROLES.ADMIN)];
@@ -51,10 +52,10 @@ router.post("/institutions", ...heaOnly, validate(createSchema), async (req, res
       institution, officerEmail, officerPassword, officerName, metamaskAddress,
       sector: "higher_ed", heaStatus: "approved",
     });
-    if (accreditedPrograms?.length) {
-      issuer.accreditedPrograms = accreditedPrograms;
-      await issuer.save();
-    }
+    if (accreditedPrograms?.length) issuer.accreditedPrograms = accreditedPrograms;
+    pushEvent(issuer, req, "institution.registered", "Registered by the HEA");
+    await issuer.save();
+    await logActivity(req, { action: "hea.register", entity: "institution", entityId: String(issuer._id), summary: `Registered institution ${issuer.institution}` });
     res.status(201).json({
       issuer: issuerView(issuer),
       officer: { email: officer.email, name: officer.name },
@@ -82,9 +83,20 @@ router.patch("/institutions/:id/status", ...heaOnly, validate(statusSchema), asy
   try {
     const issuer = await Issuer.findById(req.params.id);
     if (!issuer) return res.status(404).json({ error: "Institution not found" });
-    issuer.heaStatus = req.body.heaStatus;
+    const from = issuer.heaStatus || "approved"; // legacy issuers read as approved
+    const to = req.body.heaStatus;
+    issuer.heaStatus = to;
     issuer.heaNote = req.body.note || "";
+    // A status PATCH to "suspended" is a suspension — distinct from a rejected application,
+    // which stores the same status (see the reject route). The event records which it was.
+    pushEvent(issuer, req, to === "suspended" ? "institution.suspended" : "institution.status_changed", req.body.note || undefined, { from, to });
     await issuer.save();
+    await logActivity(req, {
+      action: "hea.status_change", entity: "institution", entityId: String(issuer._id),
+      summary: to === "suspended"
+        ? `Suspended institution ${issuer.institution}`
+        : `Changed institution ${issuer.institution} status from ${from} to ${to}`,
+    });
     res.json({ institution: issuerView(issuer) });
   } catch (err) { next(err); }
 });
@@ -97,8 +109,17 @@ router.patch("/institutions/:id/programs", ...heaOnly, validate(programsSchema),
   try {
     const issuer = await Issuer.findById(req.params.id);
     if (!issuer) return res.status(404).json({ error: "Institution not found" });
-    issuer.accreditedPrograms = req.body.accreditedPrograms;
+    const before = issuer.accreditedPrograms || [];
+    const after = req.body.accreditedPrograms;
+    const added = after.filter((p) => !before.includes(p));
+    const removed = before.filter((p) => !after.includes(p));
+    issuer.accreditedPrograms = after;
+    pushEvent(issuer, req, "institution.programs_updated", undefined, { added, removed });
     await issuer.save();
+    await logActivity(req, {
+      action: "hea.programs_update", entity: "institution", entityId: String(issuer._id),
+      summary: `Updated accredited programs for ${issuer.institution} (added ${added.length}, removed ${removed.length})`,
+    });
     res.json({ institution: issuerView(issuer) });
   } catch (err) { next(err); }
 });
@@ -120,16 +141,18 @@ router.post("/institutions/:id/approve", ...heaOnly, async (req, res, next) => {
     if (!issuer) return res.status(404).json({ error: "Institution not found" });
     if (issuer.sector === "secondary") return res.status(400).json({ error: "Secondary institutions are approved by ECZ, not HEA." });
     if (issuer.sector === "tevet") return res.status(400).json({ error: "TEVET institutions are approved by TEVETA, not HEA." });
+    const from = issuer.heaStatus || "approved"; // legacy issuers read as approved
     issuer.heaStatus = "approved";
     issuer.approvedBy = req.user.role === "admin" ? "admin" : "HEA";
     issuer.rejectedReason = "";
+    pushEvent(issuer, req, "institution.accreditation_approved", undefined, { from, to: "approved" });
     await issuer.save();
+    await logActivity(req, { action: "hea.approve", entity: "institution", entityId: String(issuer._id), summary: `Approved institution ${issuer.institution}` });
     // Authorise on-chain if not already (self-registered institutions arrive un-authorised).
     if (!issuer.onChain) {
       try { await authorizeIssuerOnChain(issuer); }
       catch (e) { return res.status(200).json({ institution: issuerView(issuer), warning: `Approved, but on-chain authorisation is pending: ${e.message}` }); }
     }
-    await logActivity(req, { action: "hea.approve", entity: "institution", entityId: String(issuer._id), summary: `Approved institution ${issuer.institution}` });
     await notifyIssuerOfficers(issuer._id, `Your institution ${issuer.institution} has been accredited by the HEA. You can now issue credentials and download your accreditation certificate.`);
     res.json({ institution: issuerView(issuer) });
   } catch (err) { next(err); }
@@ -141,9 +164,13 @@ router.post("/institutions/:id/reject", ...heaOnly, validate(rejectSchema), asyn
   try {
     const issuer = await Issuer.findById(req.params.id);
     if (!issuer) return res.status(404).json({ error: "Institution not found" });
+    const from = issuer.heaStatus || "approved"; // legacy issuers read as approved
+    // Stored status stays "suspended" (the web app depends on it); the event records that this
+    // was a rejected application, not a suspension of an approved institution.
     issuer.heaStatus = "suspended";
     issuer.rejectedReason = req.body.reason || "";
     issuer.heaNote = req.body.reason || "Rejected by HEA";
+    pushEvent(issuer, req, "institution.accreditation_rejected", req.body.reason || undefined, { from, to: "suspended" });
     await issuer.save();
     await logActivity(req, { action: "hea.reject", entity: "institution", entityId: String(issuer._id), summary: `Rejected institution ${issuer.institution}` });
     res.json({ institution: issuerView(issuer) });

@@ -4,7 +4,7 @@ import { validate } from "../middleware/security.js";
 import { verifyOnChain } from "../services/web3.service.js";
 import { verifyOffline, buildSignedPayload, renderQR } from "../services/signedQr.service.js";
 import { buildVerificationCertificatePDF } from "../services/pdf.service.js";
-import { CredentialIndex, Issuer } from "../models/index.js";
+import { CredentialIndex, Issuer, Programme, VerificationLog } from "../models/index.js";
 import { config } from "../config/index.js";
 
 const router = Router();
@@ -13,6 +13,45 @@ const RECOGNISED_AS = {
   secondary: "Secondary School Certificate", diploma: "Diploma", degree: "Degree",
   masters: "Master's Degree", phd: "Doctor of Philosophy (PhD)", other: "Qualification",
 };
+
+// Sector → the regulator that oversees the institution: higher-ed institutions answer to the
+// HEA, TEVET (technical/vocational) institutions to TEVETA, secondary certification to the ECZ.
+const REGULATOR_BY_SECTOR = { higher_ed: "HEA", tevet: "TEVETA", secondary: "ECZ" };
+
+// On-chain status → plain-language integrity keyword + label for non-technical verifiers.
+const INTEGRITY_KEY = { VERIFIED: "verified", REVOKED: "revoked", NOT_FOUND: "not_found", UNKNOWN_ISSUER: "unknown_issuer" };
+const INTEGRITY_WORD = { verified: "Verified", revoked: "Revoked", not_found: "Not Found", unknown_issuer: "Unknown Issuer" };
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Plain-language credential status for the verifier summary — folds the on-chain result,
+// the off-chain lifecycle (suspension / supersession) and the ZAQA validation state into
+// one sentence a non-technical verifier can act on. No hashes, no jargon.
+function plainCredentialStatus(onchainStatus, meta) {
+  if (onchainStatus === "NOT_FOUND") return "Not found on the blockchain";
+  if (onchainStatus === "UNKNOWN_ISSUER") return "Issued by an unrecognised institution";
+  if (onchainStatus === "REVOKED") {
+    return meta?.supersededBy ? "Revoked — replaced by a corrected credential" : "Revoked";
+  }
+  // On-chain VERIFIED: suspension is an off-chain state (on-chain stays VERIFIED until revoked).
+  if (meta?.status === "suspended" || meta?.zaqaValidation === "suspended") {
+    return "Suspended pending investigation";
+  }
+  switch (meta?.zaqaValidation) {
+    case "validated": return "Valid";
+    case "suspicious": return "Flagged for review";
+    case "under_dispute": return "Under dispute";
+    case "rejected": return "Not recognised by ZAQA";
+    default: return "Pending national validation"; // draft / pending / no index record
+  }
+}
+
+// Audit trail (verification_logs, no PII) — best-effort: never blocks or fails the response.
+function recordVerification({ credentialHash, result, mode, latencyMs }) {
+  VerificationLog.create({ credentialHash, result, mode, latencyMs }).catch(() => {});
+}
 
 // Mask an NRC/passport for the public certificate (privacy — matches the redaction on the
 // official document): keep the last 2 characters only.
@@ -50,6 +89,7 @@ router.get("/issuer-keys", async (_req, res, next) => {
 // Flow: parse QR -> validate ECDSA sig -> IPFS fetch + AES decrypt -> SHA-256 recompute
 // -> on-chain hash compare -> return one of VERIFIED/TAMPERED/REVOKED/UNKNOWN_ISSUER/NOT_FOUND.
 router.get("/:id", async (req, res, next) => {
+  const startedAt = Date.now();
   try {
     const credentialHash = req.params.id;
     if (!/^0x[a-fA-F0-9]{64}$/.test(credentialHash)) {
@@ -64,6 +104,57 @@ router.get("/:id", async (req, res, next) => {
     // Combined display status (Flow C): on-chain state wins for REVOKED/NOT_FOUND/UNKNOWN_ISSUER,
     // otherwise the ZAQA validation state drives the headline result.
     const displayStatus = combinedStatus(onchain.status, meta?.zaqaValidation);
+
+    // Programme accreditation cross-check: does an APPROVED programme of this institution match
+    // the credential's qualification? null when the institution has no programmes on record.
+    let programmeAccredited = null;
+    if (meta?.issuer) {
+      const programmeCount = await Programme.countDocuments({ issuer: meta.issuer });
+      if (programmeCount > 0) {
+        programmeAccredited = meta.qualification
+          ? !!(await Programme.exists({
+              issuer: meta.issuer,
+              status: "approved",
+              name: { $regex: `^${escapeRegex(meta.qualification)}$`, $options: "i" },
+            }))
+          : false;
+      }
+    }
+
+    // Plain-language summary for non-technical verifiers (no hashes, no tx ids, no jargon).
+    const blockchainIntegrity = INTEGRITY_KEY[onchain.status] || "not_found";
+    const summary = {
+      blockchainIntegrity,
+      blockchainIntegrityLabel: `Blockchain Integrity: ${INTEGRITY_WORD[blockchainIntegrity]}`,
+      credentialStatus: plainCredentialStatus(onchain.status, meta),
+      // Hash of the corrected replacement, when one exists — lets the verifier UI link to it.
+      supersededBy: meta?.supersededBy || null,
+      qualification: {
+        title: meta?.qualification || null,
+        nqfLevel: meta?.zqfLevel ?? null,
+        frameworkVersion: meta?.frameworkVersion || null,
+      },
+      institution: issuerRec
+        ? {
+            name: issuerRec.institution,
+            // Legacy issuers created before heaStatus existed read as undefined → treated approved.
+            accreditationStatus: issuerRec.heaStatus || "approved (legacy)",
+            regulator: REGULATOR_BY_SECTOR[issuerRec.sector] || "HEA",
+            zaqaTrusted: !!issuerRec.zaqaTrusted,
+          }
+        : null,
+      programmeAccredited,
+      issuerAuthority: !!issuerRec?.onChain,
+      zaqa: {
+        validation: meta?.zaqaValidation || null,
+        ref: meta?.zaqaRef || null,
+        validatedAt: meta?.zaqaValidatedAt || null,
+      },
+    };
+
+    recordVerification({
+      credentialHash, result: displayStatus, mode: "online", latencyMs: Date.now() - startedAt,
+    });
     res.json({
       status: onchain.status, // VERIFIED | REVOKED | UNKNOWN_ISSUER | NOT_FOUND
       displayStatus,
@@ -86,12 +177,14 @@ router.get("/:id", async (req, res, next) => {
       governance: issuerRec
         ? {
             sector: issuerRec.sector,
-            regulator: issuerRec.sector === "secondary" ? "ECZ" : "HEA",
+            // Regulator by sector: HEA (higher-ed), TEVETA (tevet), ECZ (secondary).
+            regulator: REGULATOR_BY_SECTOR[issuerRec.sector] || "HEA",
             heaStatus: issuerRec.sector === "secondary" ? null : (issuerRec.heaStatus || "approved"),
             zaqaTrusted: !!issuerRec.zaqaTrusted, // in ZAQA national trusted-issuer registry
             onChainAuthorised: !!issuerRec.onChain,
           }
         : null,
+      summary,
     });
   } catch (err) {
     next(err);
@@ -109,6 +202,11 @@ router.get("/:hash/certificate", async (req, res, next) => {
     }
     const meta = await CredentialIndex.findOne({ credentialHash }).lean();
     if (!meta) return res.status(404).json({ error: "Credential not found" });
+    // Suspension is off-chain (the credential stays VERIFIED on-chain until revoked) — the
+    // ZAQA certificate must not be downloadable while the credential is suspended.
+    if (meta.status === "suspended") {
+      return res.status(409).json({ error: "credential_suspended" });
+    }
     if (meta.zaqaValidation !== "validated") {
       return res.status(403).json({ error: "This qualification has not received ZAQA final validation yet." });
     }
@@ -172,10 +270,15 @@ const offlineSchema = Joi.object({
   issuerPubKey: Joi.string().required(), // from local cache; included here for stateless API demo
 });
 router.post("/offline", validate(offlineSchema), (req, res) => {
+  const startedAt = Date.now();
   const { payload, issuerPubKey } = req.body;
   const valid = verifyOffline(payload, issuerPubKey);
+  const status = valid ? "OFFLINE_VERIFIED" : "INVALID";
+  recordVerification({
+    credentialHash: payload.cid, result: status, mode: "offline", latencyMs: Date.now() - startedAt,
+  });
   res.json({
-    status: valid ? "OFFLINE_VERIFIED" : "INVALID",
+    status,
     issuer: payload.cred_did,
     note: "Offline confirms issuer authenticity + QR integrity; revocation needs later online re-check.",
   });

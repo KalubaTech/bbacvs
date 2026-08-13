@@ -1,13 +1,12 @@
 // Governance/admin operations: register accredited institutions as on-chain issuers.
 import { Router } from "express";
 import Joi from "joi";
-import { ethers } from "ethers";
 import { validate } from "../middleware/security.js";
-import { requireAuth, requireRole, ROLES, hashPassword } from "../middleware/auth.js";
-import { User, Issuer } from "../models/index.js";
-import { encryptKey } from "../services/keystore.service.js";
-import { publicKeyFor } from "../services/signedQr.service.js";
-import { registerIssuerOnChain } from "../services/web3.service.js";
+import { requireAuth, requireRole, ROLES } from "../middleware/auth.js";
+import { Issuer } from "../models/index.js";
+import { registerInstitution } from "../services/issuerRegistration.service.js";
+import { logActivity } from "../services/activity.service.js";
+import { pushEvent } from "../services/history.service.js";
 
 const router = Router();
 
@@ -22,6 +21,8 @@ const createIssuerSchema = Joi.object({
   // If provided, the institution signs anchoring txs themselves in MetaMask (this address
   // gets ISSUER_ROLE). If omitted, the API anchors with a server-held key.
   metamaskAddress: Joi.string().pattern(/^0x[a-fA-F0-9]{40}$/).optional().allow(""),
+  // Which regulator oversees the institution (HEA / TEVETA / ECZ).
+  sector: Joi.string().valid("higher_ed", "tevet", "secondary").default("higher_ed"),
 });
 router.post(
   "/issuers",
@@ -30,51 +31,27 @@ router.post(
   validate(createIssuerSchema),
   async (req, res, next) => {
     try {
-      const { institution, officerEmail, officerPassword, officerName, metamaskAddress } = req.body;
-      if (await User.findOne({ email: officerEmail.toLowerCase() })) {
-        return res.status(409).json({ error: "Officer email already in use" });
-      }
-
-      const metamask = !!metamaskAddress;
-      // The Crypto Engine key (server-held) signs the VC + QR proof in both modes.
-      const signingKey = ethers.Wallet.createRandom();
-      // The on-chain issuer identity: the institution's MetaMask account (they sign the
-      // anchoring tx), or the server key (server anchors) in server mode.
-      const onchainAddress = metamask ? ethers.getAddress(metamaskAddress) : signingKey.address;
-      const did = `did:ethr:${onchainAddress}`;
-
-      if (metamask && (await Issuer.findOne({ walletAddress: onchainAddress }))) {
-        return res.status(409).json({ error: "That wallet address is already an issuer" });
-      }
-
-      // Persist FIRST (onChain:false) so an on-chain failure never orphans funds and is retryable.
-      const issuer = await Issuer.create({
-        institution, did, walletAddress: onchainAddress,
-        encPrivateKey: encryptKey(signingKey.privateKey),
-        publicKey: publicKeyFor(signingKey.privateKey),
-        signingMode: metamask ? "metamask" : "server",
-        onChain: false,
+      const { institution, officerEmail, officerPassword, officerName, metamaskAddress, sector } = req.body;
+      const { issuer, officer, registrationTx } = await registerInstitution({
+        institution, officerEmail, officerPassword, officerName, metamaskAddress,
+        sector, heaStatus: "approved",
       });
-      await User.create({
-        email: officerEmail, name: officerName, role: "issuer",
-        passwordHash: await hashPassword(officerPassword), issuer: issuer._id,
-      });
-
-      // Authorise on-chain via 2-of-3 governance (also funds `onchainAddress` with gas so a
-      // MetaMask issuer can pay for its own anchoring transactions).
-      const onchain = await registerIssuerOnChain(onchainAddress, did, institution);
-      issuer.onChain = onchain.authorised;
-      issuer.registrationTx = onchain.txHash;
+      issuer.approvedBy = "admin";
+      pushEvent(issuer, req, "institution.registered", "Registered by platform admin");
       await issuer.save();
+      await logActivity(req, { action: "admin.register_issuer", entity: "institution", entityId: String(issuer._id), summary: `Registered institution ${issuer.institution}` });
 
       res.status(201).json({
         issuer: {
-          id: issuer._id, institution, did, walletAddress: onchainAddress,
-          signingMode: issuer.signingMode, onChain: issuer.onChain, registrationTx: onchain.txHash,
+          id: issuer._id, institution: issuer.institution, did: issuer.did, walletAddress: issuer.walletAddress,
+          signingMode: issuer.signingMode, onChain: issuer.onChain, registrationTx,
         },
-        officer: { email: officerEmail, name: officerName },
+        officer: { email: officer.email, name: officer.name },
       });
-    } catch (err) { next(err); }
+    } catch (err) {
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      next(err);
+    }
   }
 );
 

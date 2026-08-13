@@ -80,6 +80,12 @@ export const api = {
   registerQualification: (token, id, body = {}) =>
     request(`/api/qualifications/${id}/register`, { token, method: "POST", body: JSON.stringify(body) }),
   searchQualifications: (params = "") => request(`/api/qualifications${params}`),
+  qualificationHistory: (referenceId, token) =>
+    request(`/api/qualifications/${encodeURIComponent(referenceId)}/history`, token ? { token } : {}),
+  amendQualification: (token, id, changes, note) =>
+    request(`/api/qualifications/${id}/amend`, { token, method: "POST", body: JSON.stringify({ changes, note }) }),
+  qualificationLifecycle: (token, id, action, note) =>
+    request(`/api/qualifications/${id}/lifecycle`, { token, method: "POST", body: JSON.stringify({ action, note }) }),
 
   // admin
   createIssuer: (token, body) =>
@@ -187,6 +193,10 @@ export const api = {
     request(`/api/zaqa/validation/${hash}`, { token, method: "PATCH", body: JSON.stringify(body) }),
   zaqaRevoke: (token, hash, reasonCode = 4) =>
     request(`/api/zaqa/validation/${hash}/revoke`, { token, method: "POST", body: JSON.stringify({ reasonCode }) }),
+  zaqaSuspend: (token, hash, reason) =>
+    request(`/api/zaqa/validation/${hash}/suspend`, { token, method: "POST", body: JSON.stringify({ reason }) }),
+  zaqaReinstate: (token, hash, note) =>
+    request(`/api/zaqa/validation/${hash}/reinstate`, { token, method: "POST", body: JSON.stringify({ note }) }),
   zaqaDisputes: (token) => request(`/api/zaqa/disputes`, { token }),
   zaqaResolveDispute: (token, hash) =>
     request(`/api/zaqa/disputes/${hash}`, { token, method: "PATCH", body: JSON.stringify({}) }),
@@ -204,6 +214,14 @@ export const api = {
   disputeQueue: (token) => request(`/api/disputes/queue`, { token }),
   resolveDispute: (token, id, resolution) =>
     request(`/api/disputes/${id}/resolve`, { token, method: "PATCH", body: JSON.stringify({ resolution }) }),
+  setDisputeStatus: (token, id, status, note) =>
+    request(`/api/disputes/${id}/status`, { token, method: "PATCH", body: JSON.stringify({ status, note }) }),
+  decideDispute: (token, id, outcome, resolution) =>
+    request(`/api/disputes/${id}/decide`, { token, method: "POST", body: JSON.stringify({ outcome, resolution }) }),
+  appealDispute: (token, id, reason) =>
+    request(`/api/disputes/${id}/appeal`, { token, method: "POST", body: JSON.stringify({ reason }) }),
+  decideDisputeAppeal: (token, id, outcome, resolution) =>
+    request(`/api/disputes/${id}/appeal/decide`, { token, method: "POST", body: JSON.stringify({ outcome, resolution }) }),
 
   // notifications
   myNotifications: (token) => request(`/api/notifications`, { token }),
@@ -220,6 +238,36 @@ export const api = {
     request(`/api/credentials/${hash}/request-correction`, {
       token, method: "POST", body: JSON.stringify({ message }),
     }),
+  myVerificationActivity: (token) => request(`/api/credentials/verifications/mine`, { token }),
+
+  // credential lifecycle (suspension / reinstatement / supersession)
+  suspendCredential: (token, hash, reason) =>
+    request(`/api/credentials/${hash}/suspend`, { token, method: "POST", body: JSON.stringify({ reason }) }),
+  reinstateCredential: (token, hash, note) =>
+    request(`/api/credentials/${hash}/reinstate`, { token, method: "POST", body: JSON.stringify({ note }) }),
+  supersedeCredential: (token, hash, corrections) =>
+    request(`/api/credentials/${hash}/supersede`, { token, method: "POST", body: JSON.stringify(corrections) }),
+
+  // recognition workflows (RPL / credit transfer / progression / foreign / micro-credential)
+  createRecognitionCase: (token, body) =>
+    request(`/api/recognition`, { token, method: "POST", body: JSON.stringify(body) }),
+  myRecognitionCases: (token) => request(`/api/recognition/mine`, { token }),
+  recognitionQueue: (token, params = "") => request(`/api/recognition/queue${params}`, { token }),
+  recognitionCase: (token, id) => request(`/api/recognition/${id}`, { token }),
+  setRecognitionStatus: (token, id, status, note) =>
+    request(`/api/recognition/${id}/status`, { token, method: "PATCH", body: JSON.stringify({ status, note }) }),
+  addRecognitionEvidence: (token, id, body) =>
+    request(`/api/recognition/${id}/evidence`, { token, method: "POST", body: JSON.stringify(body) }),
+  decideRecognitionCase: (token, id, body) =>
+    request(`/api/recognition/${id}/decide`, { token, method: "POST", body: JSON.stringify(body) }),
+  withdrawRecognitionCase: (token, id) =>
+    request(`/api/recognition/${id}/withdraw`, { token, method: "POST", body: "{}" }),
+
+  // NQF knowledge base (public reads)
+  nqfFrameworks: () => request(`/api/nqf/frameworks`),
+  nqfCurrentFramework: () => request(`/api/nqf/frameworks/current`),
+  nqfLevel: (level) => request(`/api/nqf/levels/${level}`),
+  nqfProgression: () => request(`/api/nqf/progression`),
 
   // credential digitization applications
   approvedInstitutions: () => request(`/api/institutions`),
@@ -231,6 +279,12 @@ export const api = {
     request(`/api/applications/${id}/verify-issue`, { token, method: "POST", body: "{}" }),
   rejectApplication: (token, id, reason) =>
     request(`/api/applications/${id}/reject`, { token, method: "POST", body: JSON.stringify({ reason }) }),
+  setApplicationStatus: (token, id, status, note) =>
+    request(`/api/applications/${id}/status`, { token, method: "PATCH", body: JSON.stringify({ status, note }) }),
+  withdrawApplication: (token, id) =>
+    request(`/api/applications/${id}/withdraw`, { token, method: "POST", body: "{}" }),
+  addApplicationEvidence: (token, id, body) =>
+    request(`/api/applications/${id}/evidence`, { token, method: "POST", body: JSON.stringify(body) }),
   async applicationDocument(token, id) {
     const res = await fetch(`${BASE}/api/applications/${id}/document`, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error("Could not load the uploaded document");

@@ -6,15 +6,28 @@ import { Router } from "express";
 import Joi from "joi";
 import { validate } from "../middleware/security.js";
 import { requireAuth, requireRole, ROLES } from "../middleware/auth.js";
-import { Issuer, CredentialIndex, User } from "../models/index.js";
+import { Issuer, CredentialIndex, User, NQFVersion } from "../models/index.js";
 import { decryptKey } from "../services/keystore.service.js";
 import { revokeCredentialAs } from "../services/web3.service.js";
 import { logActivity } from "../services/activity.service.js";
+import { pushEvent } from "../services/history.service.js";
 import { runValidationChecks, hasCriticalFailure } from "../services/validationEngine.service.js";
 import { notifyEmail, notifyIssuerOfficers } from "../services/notify.service.js";
 
 const router = Router();
 const zaqaOnly = [requireAuth, requireRole(ROLES.ZAQA, ROLES.ADMIN)];
+
+/** Code of the NQF framework version currently in force (decisions are stamped with it). */
+async function activeFrameworkCode() {
+  try {
+    return (await NQFVersion.findOne({ status: "active" }).select("code").lean())?.code;
+  } catch { return undefined; }
+}
+
+/** Compact, explainable evidence list from a validation report: "pass|fail: <rule>". */
+function reportEvidence(report) {
+  return (report?.checks || []).map((c) => `${c.pass ? "pass" : "fail"}: ${c.rule}`);
+}
 
 // GET /api/zaqa/overview — national oversight: every account by role + institution/credential
 // tallies. ZAQA sits at the top of the governance stack, so it can see all the other roles.
@@ -67,9 +80,17 @@ router.patch("/registry/:id", ...zaqaOnly, validate(trustSchema), async (req, re
   try {
     const issuer = await Issuer.findById(req.params.id);
     if (!issuer) return res.status(404).json({ error: "Issuer not found" });
+    const from = !!issuer.zaqaTrusted;
     issuer.zaqaTrusted = req.body.zaqaTrusted;
     issuer.zaqaNote = req.body.note || "";
+    pushEvent(issuer, req, "institution.zaqa_trust_changed", req.body.note || undefined, {
+      from, to: !!req.body.zaqaTrusted, officer: req.user.email,
+    });
     await issuer.save();
+    await logActivity(req, {
+      action: "zaqa.trust_change", entity: "institution", entityId: String(issuer._id),
+      summary: `Set ${issuer.institution} to ${req.body.zaqaTrusted ? "trusted" : "not trusted"} in the national registry`,
+    });
     res.json({ id: issuer._id, zaqaTrusted: issuer.zaqaTrusted, zaqaNote: issuer.zaqaNote });
   } catch (err) { next(err); }
 });
@@ -78,7 +99,15 @@ router.patch("/registry/:id", ...zaqaOnly, validate(trustSchema), async (req, re
 router.get("/validation", ...zaqaOnly, async (req, res, next) => {
   try {
     // Default view excludes drafts (not yet submitted to ZAQA).
+    // ?status= filters the ZAQA validation state; ?credStatus= filters the
+    // credential lifecycle state (active/suspended/revoked) for the
+    // suspension/revocation case workspaces.
     const q = req.query.status ? { zaqaValidation: req.query.status } : { zaqaValidation: { $ne: "draft" } };
+    if (req.query.credStatus) {
+      delete q.zaqaValidation;
+      q.status = req.query.credStatus;
+      if (req.query.status) q.zaqaValidation = req.query.status;
+    }
     const rows = await CredentialIndex.find(q).sort({ createdAt: -1 }).limit(200).lean();
     res.json({
       credentials: rows.map((r) => ({
@@ -87,6 +116,14 @@ router.get("/validation", ...zaqaOnly, async (req, res, next) => {
         status: r.status, zaqaValidation: r.zaqaValidation, zaqaNote: r.zaqaNote, zaqaRef: r.zaqaRef,
         issuedAt: r.issuedAt,
         validationReport: r.validationReport, // decision pack: checks + risk + recommendation
+        // lifecycle context for the case workspaces (suspensions/revocations/history)
+        reasonCode: r.reasonCode,
+        suspension: r.suspension,
+        supersededBy: r.supersededBy,
+        supersedes: r.supersedes,
+        frameworkVersion: r.frameworkVersion,
+        holderEmail: r.holderEmail,
+        events: r.events || [],
       })),
     });
   } catch (err) { next(err); }
@@ -104,36 +141,58 @@ router.patch("/validation/:hash", ...zaqaOnly, validate(validateSchema), async (
   try {
     const cred = await CredentialIndex.findOne({ credentialHash: req.params.hash });
     if (!cred) return res.status(404).json({ error: "Credential not found" });
-    // One-click validation is a controlled transaction (§7): re-run all critical checks first.
-    if (req.body.zaqaValidation === "validated") {
-      cred.validationReport = await runValidationChecks(cred);
-      if (hasCriticalFailure(cred.validationReport)) {
-        await cred.save(); // preserve the refreshed report for the officer
-        const failedRules = cred.validationReport.checks.filter((c) => !c.pass).map((c) => c.rule).join("; ");
-        return res.status(409).json({ error: `Cannot validate — critical check failed: ${failedRules}` });
-      }
+    const decision = req.body.zaqaValidation;
+    const from = cred.zaqaValidation;
+    // Explainable decision (§6): every decision carries a decision pack. One-click validation is
+    // a controlled transaction (§7) — re-run all checks; other decisions reuse the latest report
+    // (running one only if none exists yet).
+    let report = cred.validationReport;
+    if (decision === "validated" || !report) {
+      report = await runValidationChecks(cred);
+      cred.validationReport = report;
     }
-    cred.zaqaValidation = req.body.zaqaValidation;
+    if (decision === "validated" && hasCriticalFailure(report)) {
+      cred.validationReports.push(report); // every validation run is preserved
+      await cred.save(); // preserve the refreshed report for the officer
+      const failedRules = report.checks.filter((c) => !c.pass).map((c) => c.rule).join("; ");
+      await logActivity(req, { action: "zaqa.validation_blocked", entity: "credential", entityId: cred.credentialHash, summary: `Validation of ${cred.subjectName}'s ${cred.qualification} blocked — critical check failed: ${failedRules}` });
+      return res.status(409).json({ error: `Cannot validate — critical check failed: ${failedRules}` });
+    }
+    cred.zaqaValidation = decision;
     if (req.body.zqfLevel != null) cred.zqfLevel = req.body.zqfLevel;
     cred.zaqaNote = req.body.note || "";
     // On first validation, mint a national reference number + stamp the validation date.
-    if (req.body.zaqaValidation === "validated") {
+    if (decision === "validated") {
       const now = new Date();
       if (!cred.zaqaRef) {
         cred.zaqaRef = `ZAQA/${now.getFullYear()}/${cred.credentialHash.slice(2, 10).toUpperCase()}`;
       }
       cred.zaqaValidatedAt = now;
     }
+    // Snapshot the decision pack (append — history is never rewritten) and stamp the NQF
+    // framework version the decision was made under.
+    cred.validationReports.push(report);
+    const frameworkCode = await activeFrameworkCode();
+    if (frameworkCode) cred.frameworkVersion = frameworkCode;
+    pushEvent(cred, req, "credential.zaqa_decision", req.body.note || undefined, {
+      from, to: decision,
+      rule: report?.recommendation,
+      evidence: reportEvidence(report),
+      result: decision,
+      policyVersion: frameworkCode,
+      officer: req.user.email,
+    });
     await cred.save();
-    await logActivity(req, { action: `zaqa.${req.body.zaqaValidation}`, entity: "credential", entityId: cred.credentialHash, summary: `Set ${cred.subjectName}'s ${cred.qualification} to ${req.body.zaqaValidation}` });
+    await logActivity(req, { action: `zaqa.${decision}`, entity: "credential", entityId: cred.credentialHash, summary: `Set ${cred.subjectName}'s ${cred.qualification} to ${decision}` });
     // Notify the graduate and the issuing institution of the decision (§7 stages 11–12, §14).
-    const label = req.body.zaqaValidation.replace(/_/g, " ");
+    const label = decision.replace(/_/g, " ");
     await notifyEmail(cred.holderEmail, `ZAQA decision on your ${cred.qualification}: ${label}${cred.zaqaRef ? ` (ref ${cred.zaqaRef})` : ""}.`);
     await notifyIssuerOfficers(cred.issuer, `ZAQA set ${cred.subjectName}'s ${cred.qualification} to ${label}.`);
     res.json({
       credentialHash: cred.credentialHash, zaqaValidation: cred.zaqaValidation,
       zqfLevel: cred.zqfLevel, zaqaNote: cred.zaqaNote,
       zaqaRef: cred.zaqaRef, zaqaValidatedAt: cred.zaqaValidatedAt,
+      frameworkVersion: cred.frameworkVersion, validationReport: cred.validationReport,
     });
   } catch (err) { next(err); }
 });
@@ -151,11 +210,69 @@ router.post("/validation/:hash/revoke", ...zaqaOnly, validate(revokeSchema), asy
     const tx = await revokeCredentialAs(decryptKey(issuer.encPrivateKey), cred.credentialHash, req.body.reasonCode);
     cred.status = "revoked";
     cred.reasonCode = req.body.reasonCode;
+    pushEvent(cred, req, "credential.revoked", undefined, { reasonCode: req.body.reasonCode, officer: req.user.email });
     await cred.save();
     await logActivity(req, { action: "zaqa.revoke", entity: "credential", entityId: cred.credentialHash, summary: `Revoked ${cred.subjectName}'s ${cred.qualification} on-chain` });
     await notifyEmail(cred.holderEmail, `Your ${cred.qualification} has been revoked by ZAQA. Contact ZAQA for details.`);
     await notifyIssuerOfficers(cred.issuer, `ZAQA revoked ${cred.subjectName}'s ${cred.qualification}.`);
     res.json({ credentialHash: cred.credentialHash, status: "revoked", tx });
+  } catch (err) { next(err); }
+});
+
+// POST /api/zaqa/validation/:hash/suspend — temporarily withdraw a credential pending
+// investigation (off-chain state; on-chain the anchor stays VERIFIED until revoked).
+const suspendSchema = Joi.object({ reason: Joi.string().min(3).max(500).required() });
+router.post("/validation/:hash/suspend", ...zaqaOnly, validate(suspendSchema), async (req, res, next) => {
+  try {
+    const cred = await CredentialIndex.findOne({ credentialHash: req.params.hash });
+    if (!cred) return res.status(404).json({ error: "Credential not found" });
+    const from = cred.zaqaValidation;
+    if (!["validated", "pending", "suspicious"].includes(from)) {
+      return res.status(409).json({ error: `Cannot suspend a credential whose validation state is "${from}".` });
+    }
+    cred.zaqaValidation = "suspended";
+    cred.status = "suspended";
+    cred.suspension.reason = req.body.reason;
+    cred.suspension.suspendedAt = new Date();
+    cred.suspension.suspendedBy = req.user.email;
+    cred.suspension.reinstatedAt = undefined;
+    cred.suspension.reinstatedBy = undefined;
+    pushEvent(cred, req, "credential.suspended", req.body.reason, { from, to: "suspended", officer: req.user.email });
+    await cred.save();
+    await logActivity(req, { action: "zaqa.suspend", entity: "credential", entityId: cred.credentialHash, summary: `Suspended ${cred.subjectName}'s ${cred.qualification} pending investigation` });
+    await notifyEmail(cred.holderEmail, `Your ${cred.qualification} has been suspended by ZAQA pending investigation: ${req.body.reason}`);
+    await notifyIssuerOfficers(cred.issuer, `ZAQA suspended ${cred.subjectName}'s ${cred.qualification}: ${req.body.reason}`);
+    res.json({
+      credentialHash: cred.credentialHash, zaqaValidation: cred.zaqaValidation,
+      status: cred.status, suspension: cred.suspension,
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/zaqa/validation/:hash/reinstate — lift a suspension. The credential returns to
+// "validated" if it already holds a ZAQA reference, otherwise back to the validation queue.
+const reinstateSchema = Joi.object({ note: Joi.string().max(500).allow("").optional() });
+router.post("/validation/:hash/reinstate", ...zaqaOnly, validate(reinstateSchema), async (req, res, next) => {
+  try {
+    const cred = await CredentialIndex.findOne({ credentialHash: req.params.hash });
+    if (!cred) return res.status(404).json({ error: "Credential not found" });
+    if (cred.zaqaValidation !== "suspended") {
+      return res.status(409).json({ error: `Cannot reinstate a credential whose validation state is "${cred.zaqaValidation}".` });
+    }
+    const to = cred.zaqaRef ? "validated" : "pending";
+    cred.zaqaValidation = to;
+    cred.status = "active";
+    cred.suspension.reinstatedAt = new Date();
+    cred.suspension.reinstatedBy = req.user.email;
+    pushEvent(cred, req, "credential.reinstated", req.body.note || undefined, { from: "suspended", to, officer: req.user.email });
+    await cred.save();
+    await logActivity(req, { action: "zaqa.reinstate", entity: "credential", entityId: cred.credentialHash, summary: `Reinstated ${cred.subjectName}'s ${cred.qualification} (now ${to})` });
+    await notifyEmail(cred.holderEmail, `Your ${cred.qualification} has been reinstated by ZAQA${to === "validated" ? " and remains nationally validated" : " and is back in the validation queue"}.`);
+    await notifyIssuerOfficers(cred.issuer, `ZAQA reinstated ${cred.subjectName}'s ${cred.qualification} (now ${to}).`);
+    res.json({
+      credentialHash: cred.credentialHash, zaqaValidation: cred.zaqaValidation,
+      status: cred.status, suspension: cred.suspension,
+    });
   } catch (err) { next(err); }
 });
 
@@ -180,7 +297,9 @@ router.patch("/disputes/:hash", ...zaqaOnly, async (req, res, next) => {
     const cred = await CredentialIndex.findOne({ credentialHash: req.params.hash });
     if (!cred) return res.status(404).json({ error: "Credential not found" });
     if (cred.correctionRequest) cred.correctionRequest.status = "resolved";
+    pushEvent(cred, req, "credential.correction_resolved", cred.correctionRequest?.message, { officer: req.user.email });
     await cred.save();
+    await logActivity(req, { action: "zaqa.correction_resolve", entity: "credential", entityId: cred.credentialHash, summary: `Resolved correction request on ${cred.subjectName}'s ${cred.qualification}` });
     res.json({ credentialHash: cred.credentialHash, correctionRequest: cred.correctionRequest });
   } catch (err) { next(err); }
 });

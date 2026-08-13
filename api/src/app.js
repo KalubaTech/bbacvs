@@ -26,6 +26,7 @@ import auditRoutes from "./routes/audit.routes.js";
 import nqfRoutes from "./routes/nqf.routes.js";
 import qualificationsRoutes from "./routes/qualifications.routes.js";
 import billingRoutes from "./routes/billing.routes.js";
+import recognitionRoutes from "./routes/recognition.routes.js";
 
 export function createApp() {
   const app = express();
@@ -44,6 +45,8 @@ export function createApp() {
   // JSON limit below (the global parser then skips the already-consumed body).
   app.use("/api/institutions", express.json({ limit: "8mb" }), institutionsRoutes);
   app.use("/api/applications", express.json({ limit: "8mb" }), applicationsRoutes);
+  // Recognition cases (RPL / CATS / foreign / micro-credential) also carry evidence uploads.
+  app.use("/api/recognition", express.json({ limit: "8mb" }), recognitionRoutes);
 
   // Tight global JSON limit for every other endpoint.
   app.use(express.json({ limit: "256kb" }));

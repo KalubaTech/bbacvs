@@ -97,7 +97,7 @@ const registeredQualificationSchema = new mongoose.Schema(
     renewalDate: { type: Date },
     status: {
       type: String,
-      enum: ["draft", "submitted", "under_review", "registered", "suspended", "expired", "deregistered", "rejected"],
+      enum: ["draft", "submitted", "under_review", "registered", "suspended", "expired", "deregistered", "rejected", "superseded"],
       default: "draft",
       index: true,
     },
@@ -113,7 +113,7 @@ const registeredQualificationSchema = new mongoose.Schema(
     fingerprintAnchorTx: { type: String },
 
     // complete regulatory timeline — history is appended, never rewritten
-    events: [{ at: Date, actor: String, action: String, note: String }],
+    events: [{ at: Date, actor: String, actorRole: String, action: String, note: String, meta: Object }],
   },
   { timestamps: true }
 );

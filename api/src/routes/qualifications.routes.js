@@ -14,6 +14,7 @@ import { RegisteredQualification, Issuer, Counter } from "../models/index.js";
 import { qualificationFingerprint, versionEffectiveOn } from "../services/nqf.service.js";
 import { notifyRole, notifyIssuerOfficers } from "../services/notify.service.js";
 import { logActivity } from "../services/activity.service.js";
+import { makeEvent, pushEvent } from "../services/history.service.js";
 
 const router = Router();
 
@@ -67,7 +68,16 @@ function optionalAuth(req, _res, next) {
   return requireAuth(req, _res, next);
 }
 
-// GET /api/qualifications?q=&level=&subFramework=&status= — search the national register.
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// GET /api/qualifications?q=&nqfLevel=&qualificationType=&subFramework=&status=&page=&limit= —
+// search the national qualifications register. Free text `q` matches title, reference ID, field
+// of education or awarding body (case-insensitive). Arbitrary `status` is governance-only; the
+// public always stays within PUBLIC_STATUSES. When `q` or `page` is present the response is the
+// paginated register shape { items, total, page, pages }; otherwise the legacy
+// { qualifications: [...] } shape is preserved for existing portal pages.
 router.get("/", optionalAuth, async (req, res, next) => {
   try {
     const isGovernance = req.user && GOVERNANCE_ROLES.includes(req.user.role);
@@ -76,9 +86,29 @@ router.get("/", optionalAuth, async (req, res, next) => {
       ? req.query.status
       : { $in: req.query.status && PUBLIC_STATUSES.includes(req.query.status) ? [req.query.status] : PUBLIC_STATUSES };
     if (!isGovernance || !req.query.status) filter.supersededBy = null; // latest versions only
-    if (req.query.q) filter.title = { $regex: String(req.query.q).slice(0, 80), $options: "i" };
-    if (req.query.level) filter.nqfLevel = parseInt(req.query.level, 10);
+    if (req.query.q) {
+      const rx = { $regex: escapeRegex(String(req.query.q).slice(0, 80)), $options: "i" };
+      filter.$or = [{ title: rx }, { referenceId: rx }, { fieldOfEducation: rx }, { awardingBody: rx }];
+    }
+    const nqfLevel = req.query.nqfLevel ?? req.query.level; // `level` kept for legacy callers
+    if (nqfLevel) filter.nqfLevel = parseInt(nqfLevel, 10);
+    if (req.query.qualificationType) filter.qualificationType = req.query.qualificationType;
     if (req.query.subFramework) filter.subFramework = req.query.subFramework;
+
+    if (req.query.page !== undefined || req.query.q !== undefined) {
+      const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+      const [total, rows] = await Promise.all([
+        RegisteredQualification.countDocuments(filter),
+        RegisteredQualification.find(filter).sort({ title: 1 }).skip((page - 1) * limit).limit(limit).lean(),
+      ]);
+      return res.json({
+        items: rows.map((q) => view(q)),
+        total,
+        page,
+        pages: Math.max(1, Math.ceil(total / limit)),
+      });
+    }
 
     const rows = await RegisteredQualification.find(filter).sort({ title: 1 }).limit(200).lean();
     res.json({ qualifications: rows.map((q) => view(q)) });
@@ -101,6 +131,65 @@ router.get("/:referenceId", optionalAuth, async (req, res, next) => {
       .lean();
 
     res.json({ qualification: view(q, { full: true }), versions: history });
+  } catch (err) { next(err); }
+});
+
+// GET /api/qualifications/:referenceId/history (public) — the full amendment/version chain of a
+// register entry: every version (walked through previousVersion/supersededBy links, so versions
+// that carried a different reference ID are included too) with its status, registration dates and
+// complete events[] timeline. History of a public qualification is public: non-governance callers
+// see only versions whose status is public or "superseded".
+router.get("/:referenceId/history", optionalAuth, async (req, res, next) => {
+  try {
+    const isGovernance = req.user && GOVERNANCE_ROLES.includes(req.user.role);
+    const start = await RegisteredQualification.findOne({ referenceId: req.params.referenceId })
+      .sort({ qualificationVersion: -1 })
+      .lean();
+    if (!start) return res.status(404).json({ error: "Qualification not found in the national register" });
+
+    // Walk the version chain in both directions (bounded; guards against link cycles).
+    const chain = new Map([[String(start._id), start]]);
+    for (const link of ["supersededBy", "previousVersion"]) {
+      let cur = start;
+      for (let hops = 0; cur?.[link] && hops < 50; hops++) {
+        const doc = await RegisteredQualification.findById(cur[link]).lean();
+        if (!doc || chain.has(String(doc._id))) break;
+        chain.set(String(doc._id), doc);
+        cur = doc;
+      }
+    }
+
+    let versions = [...chain.values()].sort(
+      (a, b) => (b.qualificationVersion || 1) - (a.qualificationVersion || 1)
+    );
+    if (!isGovernance) {
+      const visible = [...PUBLIC_STATUSES, "superseded"];
+      versions = versions.filter((v) => visible.includes(v.status));
+    }
+    if (!versions.length) {
+      return res.status(404).json({ error: "Qualification not found in the national register" });
+    }
+
+    res.json({
+      referenceId: req.params.referenceId,
+      versions: versions.map((v) => ({
+        id: v._id,
+        referenceId: v.referenceId,
+        qualificationVersion: v.qualificationVersion || 1,
+        title: v.title,
+        nqfLevel: v.nqfLevel,
+        frameworkVersion: v.frameworkVersion,
+        status: v.status,
+        registrationDate: v.registrationDate,
+        effectiveDate: v.effectiveDate,
+        expiryDate: v.expiryDate,
+        renewalDate: v.renewalDate,
+        previousVersion: v.previousVersion || null,
+        supersededBy: v.supersededBy || null,
+        fingerprint: v.fingerprint,
+        events: v.events || [],
+      })),
+    });
   } catch (err) { next(err); }
 });
 
@@ -266,6 +355,119 @@ router.post("/:id/register", requireAuth, requireRole(ROLES.ZAQA, ROLES.ADMIN), 
       await Issuer.updateOne({ _id: q.awardingBodyIssuer }, { $addToSet: { accreditedPrograms: q.title } });
     }
     await logActivity(req, { action: "qualification.register", entity: "qualification", entityId: q.referenceId, summary: `Registered "${q.title}" as ${q.referenceId} (NQF ${q.nqfLevel})` });
+    res.json({ qualification: view(q, { full: true }) });
+  } catch (err) { next(err); }
+});
+
+// POST /api/qualifications/:id/amend (ZAQA) — amend a registered qualification. Amendments never
+// edit in place (spec §7): a NEW register document is created (version+1) with the changes
+// applied and a recomputed fingerprint; the old version is marked superseded and both are linked
+// through previousVersion/supersededBy. The reference ID is shared across versions — the unique
+// index is (referenceId, qualificationVersion) — so the national ID never changes on amendment.
+const amendSchema = Joi.object({
+  changes: Joi.object({
+    title: Joi.string().min(3).max(200),
+    learningOutcomes: Joi.array().items(Joi.string().max(400)).max(40),
+    assessmentCriteria: Joi.array().items(Joi.string().max(400)).max(40),
+    creditValue: Joi.number().integer().min(1).max(2000),
+    notionalHours: Joi.number().integer().min(1).max(20000),
+    minEntryRequirements: Joi.array().items(Joi.string().max(300)).max(20),
+    progressionRoutes: Joi.array().items(Joi.string().max(300)).max(20),
+    fieldOfEducation: Joi.string().max(160).allow(""),
+    purpose: Joi.string().max(2000).allow(""),
+  }).min(1).required(),
+  note: Joi.string().min(3).max(500).required(),
+});
+router.post("/:id/amend", requireAuth, requireRole(ROLES.ZAQA, ROLES.ADMIN), validate(amendSchema), async (req, res, next) => {
+  try {
+    const old = await RegisteredQualification.findById(req.params.id);
+    if (!old) return res.status(404).json({ error: "Qualification not found" });
+    if (old.status !== "registered" || old.supersededBy) {
+      return res.status(409).json({ error: "invalid_transition", detail: `Only the current registered version can be amended (status: ${old.status}).` });
+    }
+
+    const changes = req.body.changes;
+    const changedFields = Object.keys(changes);
+    const oldVersion = old.qualificationVersion || 1;
+
+    const src = old.toObject();
+    for (const f of ["_id", "__v", "createdAt", "updatedAt", "events", "supersededBy", "fingerprint", "fingerprintAnchorTx"]) {
+      delete src[f];
+    }
+    const draft = {
+      ...src,
+      ...changes,
+      qualificationVersion: oldVersion + 1,
+      previousVersion: old._id,
+      status: "registered",
+      events: [
+        makeEvent(
+          req,
+          "qualification.amended",
+          `${req.body.note} (amended from ${old.referenceId} v${oldVersion}; fields: ${changedFields.join(", ")}; framework ${old.frameworkVersion})`,
+          { from: { referenceId: old.referenceId, version: oldVersion }, changes: changedFields, officer: req.user.email, policyVersion: old.frameworkVersion }
+        ),
+      ],
+    };
+    // Same fingerprint rule as /register: recompute over the regulated fields of the new version.
+    draft.fingerprint = qualificationFingerprint(draft);
+    const amended = await RegisteredQualification.create(draft);
+
+    // Supersede the old version. "superseded" is intentionally outside the status enum used by
+    // the workflow routes, so it is written with an update (update validators are off) — the
+    // register/history filters treat it as a public, read-only historical state.
+    await RegisteredQualification.updateOne(
+      { _id: old._id },
+      {
+        $set: { status: "superseded", supersededBy: amended._id },
+        $push: { events: makeEvent(req, "qualification.superseded", `Superseded by version ${amended.qualificationVersion}: ${req.body.note}`, { to: "superseded", officer: req.user.email }) },
+      }
+    );
+
+    if (old.awardingBodyIssuer && changes.title && changes.title !== old.title) {
+      await Issuer.updateOne({ _id: old.awardingBodyIssuer }, { $addToSet: { accreditedPrograms: amended.title } });
+    }
+    await logActivity(req, { action: "qualification.amend", entity: "qualification", entityId: amended.referenceId || String(amended._id), summary: `Amended "${amended.title}" (${amended.referenceId}) to version ${amended.qualificationVersion}` });
+    res.status(201).json({ qualification: view(amended, { full: true }) });
+  } catch (err) { next(err); }
+});
+
+// POST /api/qualifications/:id/lifecycle (ZAQA) — register-entry lifecycle decisions.
+// suspend: registered → suspended; reinstate: suspended → registered;
+// deregister (terminal): registered|suspended → deregistered;
+// renew: stays registered, stamps renewalDate and extends expiryDate by 5 years.
+const LIFECYCLE_TRANSITIONS = {
+  suspend: { from: ["registered"], to: "suspended" },
+  reinstate: { from: ["suspended"], to: "registered" },
+  deregister: { from: ["registered", "suspended"], to: "deregistered" },
+  renew: { from: ["registered"], to: "registered" },
+};
+const lifecycleSchema = Joi.object({
+  action: Joi.string().valid("suspend", "reinstate", "deregister", "renew").required(),
+  note: Joi.string().min(3).max(500).required(),
+});
+router.post("/:id/lifecycle", requireAuth, requireRole(ROLES.ZAQA, ROLES.ADMIN), validate(lifecycleSchema), async (req, res, next) => {
+  try {
+    const q = await RegisteredQualification.findById(req.params.id);
+    if (!q) return res.status(404).json({ error: "Qualification not found" });
+    const { action, note } = req.body;
+    const transition = LIFECYCLE_TRANSITIONS[action];
+    if (!transition.from.includes(q.status) || q.supersededBy) {
+      return res.status(409).json({ error: "invalid_transition", detail: `Cannot ${action} a ${q.status} qualification.` });
+    }
+    const from = q.status;
+    q.status = transition.to;
+    if (action === "renew") {
+      q.renewalDate = new Date();
+      const base = q.expiryDate ? q.expiryDate.getTime() : Date.now();
+      q.expiryDate = new Date(base + 5 * 365.25 * 24 * 3600 * 1000);
+    }
+    pushEvent(q, req, `qualification.${action}`, note, { from, to: transition.to, officer: req.user.email });
+    await q.save();
+    if (q.awardingBodyIssuer) {
+      await notifyIssuerOfficers(q.awardingBodyIssuer, `National register update: "${q.title}" (${q.referenceId}) — ${action}. ${note}`);
+    }
+    await logActivity(req, { action: `qualification.${action}`, entity: "qualification", entityId: q.referenceId || String(q._id), summary: `${action[0].toUpperCase()}${action.slice(1)} decision on "${q.title}" (${q.referenceId})` });
     res.json({ qualification: view(q, { full: true }) });
   } catch (err) { next(err); }
 });

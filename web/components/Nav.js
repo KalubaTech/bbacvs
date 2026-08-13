@@ -62,6 +62,7 @@ function NotificationsBell() {
 // Each role sees only its own portal (strict, role-based). Verify is public.
 const PORTAL_LINKS = [
   { href: "/verify", label: "Verify", roles: "*" },
+  { href: "/qualifications", label: "Qualifications", roles: "*" },
   // Instructions & fees are relevant to graduates, institutions, and visitors — not regulators.
   { href: "/instructions", label: "Instructions", roles: ["holder", "issuer"], public: true },
   { href: "/admin", label: "Admin", roles: ["admin"] },

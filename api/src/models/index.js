@@ -14,6 +14,18 @@ export async function connectDB() {
   return mongoose.connection;
 }
 
+// Shared append-only event entry: complete regulatory history for a record.
+// `meta` carries structured decision context (rule results, evidence refs,
+// policy/framework version, previous → new status) — never overwritten.
+const eventEntry = {
+  at: { type: Date, default: Date.now },
+  actor: String,      // email of the acting user (or "system")
+  actorRole: String,  // admin | zaqa | hea | teveta | ecz | issuer | holder | system
+  action: { type: String, required: true },
+  note: String,
+  meta: Object,
+};
+
 // --- users: admin / issuer / holder accounts -------------------------------
 const userSchema = new mongoose.Schema(
   {
@@ -83,6 +95,10 @@ const issuerSchema = new mongoose.Schema(
     accreditationMime: { type: String }, // for correct download content-type
     approvedBy: { type: String },        // "HEA" | "TEVETA" | "ECZ" | "admin" — who approved
     rejectedReason: { type: String },
+
+    // complete regulatory history (registration, accreditation decisions,
+    // suspensions, trust changes) — appended, never rewritten
+    events: [eventEntry],
   },
   { timestamps: true }
 );
@@ -110,8 +126,25 @@ const credentialIndexSchema = new mongoose.Schema(
       enum: ["secondary", "diploma", "degree", "masters", "phd", "other"],
       default: "other",
     },
-    status: { type: String, enum: ["pending", "active", "revoked"], default: "active" },
+    // pending   – prepared (MetaMask flow) but not yet anchored
+    // active    – anchored and in good standing
+    // suspended – temporarily withdrawn pending investigation (off-chain state;
+    //             on-chain the credential stays VERIFIED until revoked)
+    // revoked   – revoked on-chain (terminal; may be superseded by a reissue)
+    status: { type: String, enum: ["pending", "active", "suspended", "revoked"], default: "active" },
     reasonCode: { type: Number, default: 0 },
+    // Supersession chain (finding: preserve history instead of overwriting).
+    // A corrected credential is issued as a NEW record; the old one is revoked
+    // with reason AdministrativeError and linked both ways.
+    supersededBy: { type: String }, // hash of the replacing credential
+    supersedes: { type: String },   // hash of the credential this one replaces
+    suspension: {
+      reason: { type: String },
+      suspendedAt: { type: Date },
+      suspendedBy: { type: String },
+      reinstatedAt: { type: Date },
+      reinstatedBy: { type: String },
+    },
     // ZAQA validation lifecycle (independent of on-chain status):
     //  draft            – institution created it, not yet submitted to ZAQA
     //  pending          – submitted, awaiting ZAQA validation (PENDING_ZAQA_VALIDATION)
@@ -130,6 +163,10 @@ const credentialIndexSchema = new mongoose.Schema(
     zaqaValidatedAt: { type: Date },  // date of validation (shown on the certificate)
     // Automated validation report (spec §6): explainable checks + risk + recommendation.
     validationReport: { type: Object },
+    // Every validation run is preserved (latest also mirrored above).
+    validationReports: { type: [Object], default: [] },
+    // NQF framework version the validation decision was made under (e.g. "ZM-NQF-2025").
+    frameworkVersion: { type: String },
     // Graduate-raised correction request (holder → issuer/regulator).
     correctionRequest: {
       status: { type: String, enum: ["none", "open", "resolved"], default: "none" },
@@ -139,6 +176,9 @@ const credentialIndexSchema = new mongoose.Schema(
     qrPayload: { type: Object },
     anchorTx: { type: String },
     issuedAt: { type: Date, default: Date.now },
+
+    // complete credential lifecycle history — appended, never rewritten
+    events: [eventEntry],
   },
   { timestamps: true }
 );
@@ -157,6 +197,8 @@ const programmeSchema = new mongoose.Schema(
     // draft → institution created it; pending → submitted to HEA; approved/rejected → HEA decision.
     status: { type: String, enum: ["draft", "pending", "approved", "rejected"], default: "draft" },
     note: { type: String },
+    // accreditation decision history — appended, never rewritten
+    events: [eventEntry],
   },
   { timestamps: true }
 );
@@ -178,10 +220,24 @@ const applicationSchema = new mongoose.Schema(
     documentCid: { type: String },
     documentName: { type: String },
     documentMime: { type: String },
-    // submitted → institution reviews; issued → verified + forwarded to ZAQA; rejected.
-    status: { type: String, enum: ["submitted", "issued", "rejected"], default: "submitted" },
+    // Regulatory case workflow (not a bare pending/approved/rejected):
+    //  submitted         – received, awaiting screening
+    //  screening         – completeness / identity checks in progress
+    //  under_review      – records office verifying against institutional records
+    //  awaiting_evidence – returned to the applicant for more evidence
+    //  decision_pending  – verification done, awaiting the issuing decision
+    //  issued            – credential issued + forwarded to ZAQA (terminal)
+    //  rejected          – refused with reasons (terminal)
+    //  withdrawn         – withdrawn by the applicant (terminal)
+    status: {
+      type: String,
+      enum: ["submitted", "screening", "under_review", "awaiting_evidence", "decision_pending", "issued", "rejected", "withdrawn"],
+      default: "submitted",
+    },
     note: { type: String },
     credentialHash: { type: String }, // set once the institution issues the credential
+    // full case timeline shown to the applicant — appended, never rewritten
+    events: [eventEntry],
   },
   { timestamps: true }
 );
@@ -205,10 +261,28 @@ const disputeSchema = new mongoose.Schema(
     targetIssuer: { type: mongoose.Schema.Types.ObjectId, ref: "Issuer", index: true },
     institution: { type: String },
     subjectName: { type: String },
-    status: { type: String, enum: ["open", "resolved"], default: "open" },
+    // Dispute / appeal workflow:
+    //  open → under_review → awaiting_evidence → upheld | dismissed
+    //  an upheld/dismissed decision may be appealed once: appealed → appeal_upheld | appeal_dismissed
+    //  "resolved" is kept for legacy records (pre-workflow closures).
+    status: {
+      type: String,
+      enum: ["open", "under_review", "awaiting_evidence", "upheld", "dismissed", "resolved", "appealed", "appeal_upheld", "appeal_dismissed"],
+      default: "open",
+    },
     resolution: { type: String },
+    decidedBy: { type: String },
+    decidedAt: { type: Date },
+    appeal: {
+      reason: { type: String },
+      openedAt: { type: Date },
+      openedBy: { type: String },
+      decidedBy: { type: String },
+      decidedAt: { type: Date },
+      resolution: { type: String },
+    },
     // complete case timeline — history is appended, never rewritten
-    events: [{ at: Date, actor: String, action: String, note: String }],
+    events: [eventEntry],
   },
   { timestamps: true }
 );
@@ -237,6 +311,63 @@ const activityLogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// --- recognition cases: RPL / CATS / progression / foreign / micro-credential ---
+// Dedicated recognition workflows (distinct from credential digitisation):
+//  rpl                   – Recognition of Prior Learning (lead: TEVETA)
+//  credit_transfer       – CATS / credit accumulation & transfer (lead: ZAQA)
+//  progression           – learner progression-route determination (lead: ZAQA)
+//  foreign_qualification – evaluation of a foreign qualification against the NQF (lead: ZAQA)
+//  micro_credential      – recognition/stacking of a micro-credential (lead: ZAQA)
+const recognitionCaseSchema = new mongoose.Schema(
+  {
+    caseRef: { type: String, unique: true, sparse: true }, // e.g. RPL-2026-0001
+    type: {
+      type: String,
+      enum: ["rpl", "credit_transfer", "progression", "foreign_qualification", "micro_credential"],
+      required: true,
+      index: true,
+    },
+    applicantEmail: { type: String, lowercase: true, index: true },
+    applicantName: { type: String },
+    applicantNationalId: { type: String },
+    // What recognition is sought against (national register entry when known).
+    targetQualification: { type: mongoose.Schema.Types.ObjectId, ref: "RegisteredQualification" },
+    targetQualificationRef: { type: String }, // e.g. ZAQA-Q-2026-0001
+    targetTitle: { type: String },
+    targetNqfLevel: { type: Number, min: 1, max: 10 },
+    // Source side (prior learning, foreign award, credits, micro-credential).
+    sourceDescription: { type: String },
+    sourceCountry: { type: String },          // foreign_qualification
+    sourceInstitution: { type: String },
+    // Evidence documents pinned to IPFS.
+    evidence: [{ cid: String, name: String, mime: String, description: String, addedAt: Date, addedBy: String }],
+    leadAuthority: { type: String, enum: ["zaqa", "hea", "teveta", "ecz"], index: true },
+    // submitted → screening → assessment → decision_pending →
+    //   recognised | partially_recognised | not_recognised | withdrawn
+    status: {
+      type: String,
+      enum: ["submitted", "screening", "assessment", "decision_pending", "recognised", "partially_recognised", "not_recognised", "withdrawn"],
+      default: "submitted",
+      index: true,
+    },
+    // Explainable decision: rule applied, evidence considered, result, officer, policy version.
+    decision: {
+      outcome: String,           // recognised | partially_recognised | not_recognised
+      nqfLevel: Number,          // level the learning was mapped to
+      creditsAwarded: Number,
+      mappedQualificationRef: String,
+      rationale: String,         // rule + evidence + result narrative
+      descriptorAnalysis: Object, // knowledge / skills / autonomyResponsibility comparison
+      officer: String,
+      policyVersion: String,     // NQF framework version applied
+      at: Date,
+    },
+    // full case timeline — appended, never rewritten
+    events: [eventEntry],
+  },
+  { timestamps: true }
+);
+
 // --- verification_logs: audit trail (no PII) -------------------------------
 const verificationLogSchema = new mongoose.Schema(
   {
@@ -259,6 +390,7 @@ export const CredentialIndex = mongoose.model("CredentialIndex", credentialIndex
 export const Programme = mongoose.model("Programme", programmeSchema);
 export const Application = mongoose.model("Application", applicationSchema);
 export const Dispute = mongoose.model("Dispute", disputeSchema);
+export const RecognitionCase = mongoose.model("RecognitionCase", recognitionCaseSchema);
 export const Notification = mongoose.model("Notification", notificationSchema);
 export const ActivityLog = mongoose.model("ActivityLog", activityLogSchema);
 export const VerificationLog = mongoose.model("VerificationLog", verificationLogSchema);

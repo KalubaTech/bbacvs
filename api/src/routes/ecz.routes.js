@@ -9,6 +9,8 @@ import { requireAuth, requireRole, ROLES } from "../middleware/auth.js";
 import { Issuer, CredentialIndex } from "../models/index.js";
 import { authorizeIssuerOnChain } from "../services/issuerRegistration.service.js";
 import { fetchByCid } from "../services/ipfs.service.js";
+import { logActivity } from "../services/activity.service.js";
+import { pushEvent } from "../services/history.service.js";
 
 const router = Router();
 const eczOnly = [requireAuth, requireRole(ROLES.ECZ, ROLES.ADMIN)];
@@ -45,10 +47,13 @@ router.post("/institutions/:id/approve", ...eczOnly, async (req, res, next) => {
     const issuer = await Issuer.findById(req.params.id);
     if (!issuer) return res.status(404).json({ error: "Institution not found" });
     if (issuer.sector !== "secondary") return res.status(400).json({ error: "Higher-ed institutions are approved by HEA, not ECZ." });
+    const from = issuer.heaStatus || "approved"; // legacy issuers read as approved
     issuer.heaStatus = "approved";
     issuer.approvedBy = req.user.role === "admin" ? "admin" : "ECZ";
     issuer.rejectedReason = "";
+    pushEvent(issuer, req, "institution.accreditation_approved", undefined, { from, to: "approved" });
     await issuer.save();
+    await logActivity(req, { action: "ecz.approve", entity: "institution", entityId: String(issuer._id), summary: `Approved institution ${issuer.institution}` });
     if (!issuer.onChain) {
       try { await authorizeIssuerOnChain(issuer); }
       catch (e) { return res.status(200).json({ institution: issuerView(issuer), warning: `Approved, but on-chain authorisation is pending: ${e.message}` }); }
@@ -63,10 +68,15 @@ router.post("/institutions/:id/reject", ...eczOnly, validate(rejectSchema), asyn
   try {
     const issuer = await Issuer.findById(req.params.id);
     if (!issuer) return res.status(404).json({ error: "Institution not found" });
+    const from = issuer.heaStatus || "approved"; // legacy issuers read as approved
+    // Stored status stays "suspended" (the web app depends on it); the event records that this
+    // was a rejected application, not a suspension of an approved institution.
     issuer.heaStatus = "suspended";
     issuer.rejectedReason = req.body.reason || "";
     issuer.heaNote = req.body.reason || "Rejected by ECZ";
+    pushEvent(issuer, req, "institution.accreditation_rejected", req.body.reason || undefined, { from, to: "suspended" });
     await issuer.save();
+    await logActivity(req, { action: "ecz.reject", entity: "institution", entityId: String(issuer._id), summary: `Rejected institution ${issuer.institution}` });
     res.json({ institution: issuerView(issuer) });
   } catch (err) { next(err); }
 });

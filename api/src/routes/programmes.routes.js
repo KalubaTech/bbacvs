@@ -9,6 +9,8 @@ import Joi from "joi";
 import { validate } from "../middleware/security.js";
 import { requireAuth, requireRole, ROLES } from "../middleware/auth.js";
 import { Programme, Issuer, RegisteredQualification } from "../models/index.js";
+import { logActivity } from "../services/activity.service.js";
+import { pushEvent } from "../services/history.service.js";
 
 const router = Router();
 
@@ -17,6 +19,7 @@ function view(p) {
     id: p._id, name: p.name, zqfLevel: p.zqfLevel, status: p.status,
     institution: p.institution, note: p.note, createdAt: p.createdAt,
     qualificationRef: p.qualificationRef,
+    events: p.events || [],
   };
 }
 
@@ -58,6 +61,9 @@ router.post("/", requireAuth, requireRole(ROLES.ISSUER), validate(createSchema),
       qualification: qual?._id, qualificationRef: qual?.referenceId,
       status: "draft",
     });
+    pushEvent(p, req, "programme.created");
+    await p.save();
+    await logActivity(req, { action: "programme.create", entity: "programme", entityId: String(p._id), summary: `Created programme ${p.name} (${issuer.institution})` });
     res.status(201).json({ programme: view(p) });
   } catch (err) { next(err); }
 });
@@ -77,7 +83,9 @@ router.post("/:id/submit", requireAuth, requireRole(ROLES.ISSUER), async (req, r
     if (!p) return res.status(404).json({ error: "Programme not found" });
     if (p.status !== "draft") return res.status(400).json({ error: `Already submitted (status: ${p.status}).` });
     p.status = "pending";
+    pushEvent(p, req, "programme.submitted", undefined, { from: "draft", to: "pending" });
     await p.save();
+    await logActivity(req, { action: "programme.submit", entity: "programme", entityId: String(p._id), summary: `Submitted programme ${p.name} for accreditation` });
     res.json({ programme: view(p) });
   } catch (err) { next(err); }
 });
@@ -113,9 +121,12 @@ router.post("/:id/approve", ...regulatorOnly, async (req, res, next) => {
     if (!regulates(req.user.role, p.issuer?.sector)) {
       return res.status(403).json({ error: "This programme belongs to another regulator's sector." });
     }
+    const from = p.status;
     p.status = "approved";
+    pushEvent(p, req, "programme.accredited", undefined, { from, to: "approved" });
     await p.save();
     await Issuer.updateOne({ _id: p.issuer._id }, { $addToSet: { accreditedPrograms: p.name } });
+    await logActivity(req, { action: "programme.approve", entity: "programme", entityId: String(p._id), summary: `Accredited programme ${p.name} (${p.institution})` });
     res.json({ programme: view(p) });
   } catch (err) { next(err); }
 });
@@ -129,9 +140,12 @@ router.post("/:id/reject", ...regulatorOnly, validate(rejectSchema), async (req,
     if (!regulates(req.user.role, p.issuer?.sector)) {
       return res.status(403).json({ error: "This programme belongs to another regulator's sector." });
     }
+    const from = p.status;
     p.status = "rejected";
     p.note = req.body.reason || "";
+    pushEvent(p, req, "programme.rejected", req.body.reason || undefined, { from, to: "rejected" });
     await p.save();
+    await logActivity(req, { action: "programme.reject", entity: "programme", entityId: String(p._id), summary: `Rejected programme ${p.name} (${p.institution})` });
     res.json({ programme: view(p) });
   } catch (err) { next(err); }
 });

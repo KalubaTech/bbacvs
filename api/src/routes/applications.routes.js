@@ -12,6 +12,7 @@ import { anchorCredentialAs } from "../services/web3.service.js";
 import { prepareCredential, indexCredential } from "../services/issuance.service.js";
 import { pin, fetchByCid } from "../services/ipfs.service.js";
 import { logActivity } from "../services/activity.service.js";
+import { pushEvent, makeEvent } from "../services/history.service.js";
 import { runValidationChecks } from "../services/validationEngine.service.js";
 import { notifyEmail, notifyIssuerOfficers, notifyRole } from "../services/notify.service.js";
 import { CredentialIndex } from "../models/index.js";
@@ -24,8 +25,21 @@ function view(a) {
     institution: a.institution, qualification: a.qualification, graduationYear: a.graduationYear,
     credentialType: a.credentialType, zqfLevel: a.zqfLevel, status: a.status, note: a.note,
     hasDocument: !!a.documentCid, credentialHash: a.credentialHash, createdAt: a.createdAt,
+    updatedAt: a.updatedAt, events: a.events || [], // full case timeline
   };
 }
+
+// Legal review-workflow transitions (issue happens via /verify-issue, withdrawal via /withdraw).
+const TRANSITIONS = {
+  submitted: ["screening", "under_review", "rejected"],
+  screening: ["under_review", "awaiting_evidence", "rejected"],
+  under_review: ["awaiting_evidence", "decision_pending", "rejected"],
+  awaiting_evidence: ["under_review", "rejected"],
+  decision_pending: ["rejected"],
+};
+const TERMINAL_STATUSES = ["issued", "rejected", "withdrawn"];
+// Statuses from which the institution may verify & issue.
+const ISSUABLE_FROM = ["submitted", "screening", "under_review", "decision_pending"];
 
 // POST /api/applications (graduate) — apply to digitize a credential + upload proof.
 const applySchema = Joi.object({
@@ -86,6 +100,7 @@ router.post("/", requireAuth, requireRole(ROLES.HOLDER), validate(applySchema), 
       qualification: req.body.qualification, graduationYear: req.body.graduationYear,
       credentialType: req.body.credentialType, zqfLevel: req.body.zqfLevel,
       documentCid: cid, documentName: req.body.document.name, documentMime: req.body.document.mime,
+      events: [makeEvent(req, "application.submitted", `Applied to digitize ${req.body.qualification} (${req.body.graduationYear})`)],
     });
     await logActivity(req, { action: "application.submit", entity: "application", entityId: String(app._id), summary: `Applied to digitize ${app.qualification} from ${app.institution}` });
     await notifyIssuerOfficers(issuer._id, `New digitization request: ${app.applicantName} — ${app.qualification} (${app.graduationYear}). Please review the uploaded document.`);
@@ -127,7 +142,9 @@ router.post("/:id/verify-issue", requireAuth, requireRole(...ISSUING_ROLES), asy
   try {
     const app = await Application.findOne({ _id: req.params.id, targetIssuer: req.user.issuerId });
     if (!app) return res.status(404).json({ error: "Application not found" });
-    if (app.status !== "submitted") return res.status(400).json({ error: `Already ${app.status}.` });
+    if (!ISSUABLE_FROM.includes(app.status)) {
+      return res.status(409).json({ error: "invalid_transition", from: app.status, to: "issued" });
+    }
     const issuer = await Issuer.findById(req.user.issuerId);
     if (!issuer) return res.status(403).json({ error: "Issuer profile not found" });
     if ((issuer.heaStatus || "approved") !== "approved") {
@@ -145,8 +162,13 @@ router.post("/:id/verify-issue", requireAuth, requireRole(...ISSUING_ROLES), asy
     // automated decision pack attached (§6).
     cred.zaqaValidation = "pending";
     cred.validationReport = await runValidationChecks(cred);
+    pushEvent(cred, req, "credential.issued", `Issued from ${app.applicantName}'s digitization application`, { txHash: anchor.txHash });
+    pushEvent(cred, req, "credential.submitted_to_zaqa", undefined, { from: "draft", to: "pending" });
     await cred.save();
-    app.status = "issued"; app.credentialHash = prep.credentialHash; await app.save();
+    const from = app.status;
+    app.status = "issued"; app.credentialHash = prep.credentialHash;
+    pushEvent(app, req, "application.issued", "Credential issued and forwarded to ZAQA for validation", { from, to: "issued", credentialHash: prep.credentialHash });
+    await app.save();
     await logActivity(req, { action: "application.verify_issue", entity: "application", entityId: String(app._id), summary: `Verified & forwarded ${app.applicantName}'s ${app.qualification} to ZAQA` });
     await notifyEmail(app.applicantEmail, `${app.institution} verified your ${app.qualification} and forwarded it to ZAQA for national validation.`);
     await notifyRole("zaqa", `New credential submitted for validation: ${app.applicantName} — ${app.qualification} (${app.institution}). Automated risk: ${cred.validationReport.risk}.`);
@@ -160,10 +182,94 @@ router.post("/:id/reject", requireAuth, requireRole(...ISSUING_ROLES), validate(
   try {
     const app = await Application.findOne({ _id: req.params.id, targetIssuer: req.user.issuerId });
     if (!app) return res.status(404).json({ error: "Application not found" });
+    if (TERMINAL_STATUSES.includes(app.status)) {
+      return res.status(409).json({ error: "invalid_transition", from: app.status, to: "rejected" });
+    }
+    const from = app.status;
     app.status = "rejected"; app.note = req.body.reason || "";
+    pushEvent(app, req, "application.rejected", app.note || undefined, { from, to: "rejected" });
     await app.save();
     await logActivity(req, { action: "application.reject", entity: "application", entityId: String(app._id), summary: `Rejected ${app.applicantName}'s digitization request` });
     await notifyEmail(app.applicantEmail, `${app.institution} could not verify your ${app.qualification} application${app.note ? `: ${app.note}` : "."}`);
+    res.json({ application: view(app) });
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/applications/:id/status (institution) — move a case through the review workflow
+// (screening / under_review / awaiting_evidence / decision_pending / rejected). The applicant
+// is notified in plain language at every stage.
+const STAGE_NOTICE = {
+  screening: (a) => `${a.institution} has started screening your ${a.qualification} application (completeness and identity checks).`,
+  under_review: (a) => `${a.institution} is now verifying your ${a.qualification} against institutional records.`,
+  awaiting_evidence: (a) => `${a.institution} needs more evidence for your ${a.qualification} application${a.note ? `: ${a.note}` : "."} Please provide it from your applications page.`,
+  decision_pending: (a) => `${a.institution} has finished verifying your ${a.qualification}; a final issuing decision is pending.`,
+  rejected: (a) => `${a.institution} could not verify your ${a.qualification} application${a.note ? `: ${a.note}` : "."}`,
+};
+const statusSchema = Joi.object({
+  status: Joi.string().valid("screening", "under_review", "awaiting_evidence", "decision_pending", "rejected").required(),
+  note: Joi.string().max(500).allow("").optional(),
+});
+router.patch("/:id/status", requireAuth, requireRole(...ISSUING_ROLES), validate(statusSchema), async (req, res, next) => {
+  try {
+    const app = await Application.findOne({ _id: req.params.id, targetIssuer: req.user.issuerId });
+    if (!app) return res.status(404).json({ error: "Application not found" });
+    const from = app.status, to = req.body.status;
+    if (!(TRANSITIONS[from] || []).includes(to)) {
+      return res.status(409).json({ error: "invalid_transition", from, to });
+    }
+    app.status = to;
+    if (req.body.note !== undefined) app.note = req.body.note;
+    pushEvent(app, req, "application.status_changed", req.body.note || undefined, { from, to });
+    await app.save();
+    await logActivity(req, { action: "application.status_change", entity: "application", entityId: String(app._id), summary: `Moved ${app.applicantName}'s ${app.qualification} application from ${from} to ${to}` });
+    await notifyEmail(app.applicantEmail, STAGE_NOTICE[to](app));
+    res.json({ application: view(app) });
+  } catch (err) { next(err); }
+});
+
+// POST /api/applications/:id/withdraw (graduate) — withdraw an application still in flight.
+router.post("/:id/withdraw", requireAuth, requireRole(ROLES.HOLDER), async (req, res, next) => {
+  try {
+    const app = await Application.findOne({ _id: req.params.id, applicantEmail: req.user.email?.toLowerCase() });
+    if (!app) return res.status(404).json({ error: "Application not found" });
+    if (TERMINAL_STATUSES.includes(app.status)) {
+      return res.status(409).json({ error: "invalid_transition", from: app.status, to: "withdrawn" });
+    }
+    const from = app.status;
+    app.status = "withdrawn";
+    pushEvent(app, req, "application.withdrawn", undefined, { from, to: "withdrawn" });
+    await app.save();
+    await logActivity(req, { action: "application.withdraw", entity: "application", entityId: String(app._id), summary: `Withdrew the ${app.qualification} digitization application` });
+    res.json({ application: view(app) });
+  } catch (err) { next(err); }
+});
+
+// POST /api/applications/:id/evidence (graduate) — answer an awaiting_evidence request: attach a
+// replacement document (pinned to IPFS like the original upload) and/or a message, which sends
+// the case back to under_review.
+const evidenceSchema = Joi.object({
+  documentBase64: Joi.string().base64().max(8_000_000).optional(),
+  documentName: Joi.string().max(200).optional(),
+  documentMime: Joi.string().max(100).optional(),
+  message: Joi.string().min(1).max(1000).required(),
+}).with("documentBase64", ["documentName", "documentMime"]);
+router.post("/:id/evidence", requireAuth, requireRole(ROLES.HOLDER), validate(evidenceSchema), async (req, res, next) => {
+  try {
+    const app = await Application.findOne({ _id: req.params.id, applicantEmail: req.user.email?.toLowerCase() });
+    if (!app) return res.status(404).json({ error: "Application not found" });
+    if (app.status !== "awaiting_evidence") {
+      return res.status(409).json({ error: "invalid_transition", from: app.status, to: "under_review" });
+    }
+    let cid;
+    if (req.body.documentBase64) {
+      cid = await pin({ filename: req.body.documentName, mime: req.body.documentMime, data: req.body.documentBase64 });
+      app.documentCid = cid; app.documentName = req.body.documentName; app.documentMime = req.body.documentMime;
+    }
+    app.status = "under_review";
+    pushEvent(app, req, "application.evidence_added", req.body.message, { from: "awaiting_evidence", to: "under_review", ...(cid ? { cid } : {}) });
+    await app.save();
+    await logActivity(req, { action: "application.evidence", entity: "application", entityId: String(app._id), summary: `Provided additional evidence for the ${app.qualification} application` });
+    await notifyIssuerOfficers(app.targetIssuer, `${app.applicantName} provided additional evidence for their ${app.qualification} application: ${req.body.message}`);
     res.json({ application: view(app) });
   } catch (err) { next(err); }
 });

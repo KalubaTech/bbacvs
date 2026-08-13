@@ -183,8 +183,86 @@ export default function VerifyPage() {
             </dl>
           )}
 
-          {/* Governance status chain — issuer legitimacy + regulator standing + ZAQA validation */}
-          {result.mode === "online" && (result.governance || result.credential?.zaqaValidation) && (
+          {/* Plain-language verification summary (enriched API responses). */}
+          {result.mode === "online" && result.summary && (
+            <div className="mt-4 border-t border-black/5 pt-4">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Verification summary</div>
+              <dl className="space-y-2.5">
+                <SummaryRow
+                  ok={result.summary.blockchainIntegrity === "verified"}
+                  label="Blockchain integrity"
+                  value={result.summary.blockchainIntegrityLabel?.replace(/^Blockchain Integrity:\s*/i, "") || cap(result.summary.blockchainIntegrity)}
+                />
+                <SummaryRow
+                  ok={/^valid/i.test(result.summary.credentialStatus || "")}
+                  warn={/pending|suspended/i.test(result.summary.credentialStatus || "")}
+                  label="Credential status"
+                  value={
+                    <>
+                      {result.summary.credentialStatus}
+                      {result.summary.supersededBy && (
+                        <button
+                          type="button"
+                          className="ml-2 font-semibold text-[#12275c] underline"
+                          onClick={() => { setHash(result.summary.supersededBy); runOnline(result.summary.supersededBy); }}
+                        >
+                          View the corrected credential
+                        </button>
+                      )}
+                    </>
+                  }
+                />
+                {result.summary.qualification?.title && (
+                  <SummaryRow
+                    ok
+                    label="Qualification"
+                    value={`${result.summary.qualification.title}${result.summary.qualification.nqfLevel ? ` — NQF Level ${result.summary.qualification.nqfLevel}` : ""}${result.summary.qualification.frameworkVersion ? ` (${result.summary.qualification.frameworkVersion})` : ""}`}
+                  />
+                )}
+                {result.summary.institution && (
+                  <SummaryRow
+                    ok={/approved/i.test(result.summary.institution.accreditationStatus || "")}
+                    warn={/pending/i.test(result.summary.institution.accreditationStatus || "")}
+                    label="Institution"
+                    value={`${result.summary.institution.name || "—"} — ${cap(result.summary.institution.accreditationStatus || "unknown")} by ${result.summary.institution.regulator || "regulator"}${result.summary.institution.zaqaTrusted ? " · ZAQA trusted" : ""}`}
+                  />
+                )}
+                {result.summary.programmeAccredited != null && (
+                  <SummaryRow
+                    ok={result.summary.programmeAccredited === true}
+                    warn={result.summary.programmeAccredited !== true}
+                    label="Programme accreditation"
+                    value={result.summary.programmeAccredited ? "Programme accredited" : "Not confirmed against the accredited programme list"}
+                  />
+                )}
+                <SummaryRow
+                  ok={result.summary.issuerAuthority === true}
+                  label="Issuer authority"
+                  value={result.summary.issuerAuthority ? "Authorised national issuer" : "Issuer authority not confirmed"}
+                />
+                <SummaryRow
+                  ok={result.summary.zaqa?.validation === "validated"}
+                  warn={["pending", "draft"].includes(result.summary.zaqa?.validation)}
+                  label="National recognition"
+                  value={
+                    result.summary.zaqa?.validation === "validated"
+                      ? `Validated by ZAQA${result.summary.zaqa.ref ? ` · Ref ${result.summary.zaqa.ref}` : ""}${result.summary.zaqa.validatedAt ? ` · ${new Date(result.summary.zaqa.validatedAt).toLocaleDateString()}` : ""}`
+                      : `ZAQA validation: ${(result.summary.zaqa?.validation || "pending").replace(/_/g, " ")}`
+                  }
+                />
+              </dl>
+              {result.status === "VERIFIED" && result.credential?.zaqaValidation === "validated" && (
+                <div className="mt-4">
+                  <Button size="sm" onClick={downloadCertificate} loading={certBusy}>
+                    Download ZAQA verification certificate
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Governance status chain — legacy fallback when the API has no summary yet */}
+          {result.mode === "online" && !result.summary && (result.governance || result.credential?.zaqaValidation) && (
             <div className="mt-4 border-t border-black/5 pt-4">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Governance status</div>
               <div className="flex flex-wrap gap-2">
@@ -246,6 +324,28 @@ function Item({ label, value }) {
 }
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// One row of the plain-language verification summary.
+function SummaryRow({ ok, warn, label, value }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span
+        className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full ${
+          ok ? "bg-emerald-100 text-emerald-600" : warn ? "bg-amber-100 text-amber-600" : "bg-red-100 text-red-600"
+        }`}
+      >
+        <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          {ok ? <path d="M5 13l4 4L19 7" /> : warn ? <path d="M12 7v5l3 2" /> : <path d="M6 6l12 12M18 6L6 18" />}
+          {warn && !ok ? <circle cx="12" cy="12" r="9" /> : null}
+        </svg>
+      </span>
+      <div className="min-w-0 leading-snug">
+        <dt className="text-[11px] font-medium text-slate-500">{label}</dt>
+        <dd className="text-[13px] font-semibold text-slate-800">{value}</dd>
+      </div>
+    </div>
+  );
+}
 
 // Status chip: green when ok, amber when warn, red otherwise.
 function Chip({ ok, warn, label }) {
