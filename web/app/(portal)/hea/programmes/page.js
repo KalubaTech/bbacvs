@@ -2,33 +2,27 @@
 
 import { useEffect, useState, useCallback } from "react";
 import PortalShell from "../../../../components/portal/shell";
-import Icon from "../../../../components/portal/icons";
 import {
   Badge, StatCard, StatRow, SectionCard, SelectPill, SearchBox,
-  ToolButton, DataTable, Pagination, TabBar, KVGrid, ActionBtn,
+  ToolButton, DataTable, Pagination, usePager, KVGrid, ActionBtn,
+  PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
+import CaseTimeline from "../../../../components/portal/CaseTimeline";
 import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 import { api } from "../../../../lib/api";
 
 const STATUS_TONE = { pending: "amber", approved: "green", rejected: "red", draft: "slate" };
 const STATUS_LABEL = { pending: "Pending Review", approved: "Approved", rejected: "Rejected", draft: "Draft" };
 
-function DetailPanel({ prog, busy, onApprove, onReject }) {
-  const [tab, setTab] = useState("Overview");
+function DetailPanel({ prog, busy, onClose, onApprove, onReject }) {
   return (
     <div>
-      <div className="mb-1 flex items-start justify-between gap-3">
-        <Badge tone={STATUS_TONE[prog.status] || "slate"}>{(STATUS_LABEL[prog.status] || prog.status).toUpperCase()}</Badge>
-        <button className="text-slate-400 hover:text-slate-600" aria-label="Close">
-          <Icon name="x" className="h-[18px] w-[18px]" />
-        </button>
-      </div>
-      <h2 className="text-[15px] font-bold text-slate-900">{prog.name}</h2>
-      <div className="mb-3 text-[12px] text-slate-500">Application ID: {prog.id}</div>
-
-      <div className="mb-4">
-        <TabBar tabs={["Overview", "Documents", "Review History", "Communications"]} active={tab} onChange={setTab} />
-      </div>
+      <PanelHeader
+        title={prog.name}
+        badge={<Badge tone={STATUS_TONE[prog.status] || "slate"}>{STATUS_LABEL[prog.status] || prog.status}</Badge>}
+        onClose={onClose}
+      />
+      <div className="-mt-2 mb-4 text-[12px] text-slate-500">Application ID: {prog.id}</div>
 
       <SectionCard title="Programme Summary" className="mb-4" pad="p-4">
         <KVGrid
@@ -42,6 +36,10 @@ function DetailPanel({ prog, busy, onApprove, onReject }) {
             { label: "Regulator Note", value: prog.note || "—" },
           ]}
         />
+      </SectionCard>
+
+      <SectionCard title="History" className="mb-4" pad="p-4">
+        <CaseTimeline events={prog.events} />
       </SectionCard>
 
       <div className="mb-4 rounded-xl border border-slate-200 p-3.5">
@@ -59,8 +57,6 @@ function DetailPanel({ prog, busy, onApprove, onReject }) {
           <ActionBtn tone="green" icon="check" disabled={busy === prog.id} onClick={() => onApprove(prog.id)}>
             {busy === prog.id ? "Working…" : "Recommend Approval"}
           </ActionBtn>
-          <ActionBtn tone="softorange" icon="edit">Request Changes</ActionBtn>
-          <ActionBtn tone="softblue" icon="calendar">Schedule Site Visit</ActionBtn>
           <ActionBtn tone="softred" icon="x" disabled={busy === prog.id} onClick={() => onReject(prog.id)}>
             Reject
           </ActionBtn>
@@ -71,16 +67,20 @@ function DetailPanel({ prog, busy, onApprove, onReject }) {
 }
 
 export default function HeaProgrammesPage() {
-  const { ready, user, token } = usePortalGuard(["hea"]);
-  const [pill, setPill] = useState("All");
+  const { ready, token } = usePortalGuard(["hea"]);
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState(null);
+  const [instFilter, setInstFilter] = useState("");
+  const [levelFilter, setLevelFilter] = useState("");
+  const [sel, setSel] = useState(undefined);
   const [programmes, setProgrammes] = useState([]);
   const [institutions, setInstitutions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const [progs, inst] = await Promise.all([
         api.pendingProgrammes(token),
@@ -89,6 +89,7 @@ export default function HeaProgrammesPage() {
       setProgrammes(progs.programmes || []);
       setInstitutions(inst.institutions || []);
     } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => { if (ready) load(); }, [ready, load]);
@@ -113,27 +114,34 @@ export default function HeaProgrammesPage() {
   const accreditedTotal = institutions.reduce((n, i) => n + (i.accreditedPrograms?.length || 0), 0);
   const kpis = [
     { icon: "folder", iconTone: "purple", label: "In Review Queue", value: String(programmes.length) },
-    { icon: "fileText", iconTone: "amber", label: "Awaiting Decision", value: String(programmes.length) },
-    { icon: "calendar", iconTone: "softblue", label: "Site Visits Scheduled", value: "0" },
-    { icon: "users", iconTone: "amber", label: "Under Committee Review", value: "0" },
     { icon: "shieldCheck", iconTone: "softgreen", label: "Accredited Programmes", value: String(accreditedTotal) },
-    { icon: "xCircle", iconTone: "softred", label: "Linked to NQF Register", value: String(programmes.filter((p) => p.qualificationRef).length) },
+    { icon: "registry", iconTone: "softblue", label: "Linked to NQF Register", value: String(programmes.filter((p) => p.qualificationRef).length) },
+    { icon: "bank", iconTone: "amber", label: "Institutions With Submissions", value: String(new Set(programmes.map((p) => p.institution)).size) },
   ];
 
-  const pills = [
-    { label: "All", count: programmes.length },
-    { label: "Submitted", count: programmes.length },
-    { label: "Document Review", count: 0 },
-    { label: "Site Visit", count: 0 },
-    { label: "Under Committee Review", count: 0 },
-  ];
+  const progInstitutions = [...new Set(programmes.map((p) => p.institution).filter(Boolean))];
+  const levels = [...new Set(programmes.map((p) => p.zqfLevel).filter(Boolean))].sort((a, b) => a - b);
 
   const rows = programmes.filter(
     (r) =>
-      (pill === "All" || pill === "Submitted") &&
+      (!instFilter || r.institution === instFilter) &&
+      (!levelFilter || String(r.zqfLevel) === String(levelFilter)) &&
       (!q || ((r.name || "") + (r.institution || "") + (r.qualificationRef || "")).toLowerCase().includes(q.toLowerCase()))
   );
-  const selected = programmes.find((r) => r.id === sel) || rows[0] || programmes[0] || null;
+  const pager = usePager(rows, 10, [q, instFilter, levelFilter]);
+  const selected = sel === null ? null : programmes.find((r) => r.id === sel) || rows[0] || null;
+
+  const columns = [
+    { key: "name", label: "Programme Title", render: (r) => <span className="font-semibold text-slate-800">{r.name}</span> },
+    { key: "institution", label: "Institution", render: (r) => r.institution || "—" },
+    { key: "qualificationRef", label: "Qualification Ref.", render: (r) => r.qualificationRef || "—" },
+    { key: "zqfLevel", label: "NQF Level", tdClass: "text-center", thClass: "text-center", render: (r) => r.zqfLevel || "—" },
+    { key: "createdAt", label: "Submission Date", csv: (r) => fmtDate(r.createdAt), render: (r) => fmtDate(r.createdAt) },
+    {
+      key: "status", label: "Status", csv: (r) => STATUS_LABEL[r.status] || r.status,
+      render: (r) => <Badge tone={STATUS_TONE[r.status] || "slate"}>{STATUS_LABEL[r.status] || r.status}</Badge>,
+    },
+  ];
 
   return (
     <PortalShell
@@ -141,23 +149,24 @@ export default function HeaProgrammesPage() {
       active="programmes"
       title="HEA Portal – Programme Accreditation Review"
       subtitle="Review and decide on degree, diploma and certificate programmes submitted for accreditation."
-      user={{ name: user.name || user.email, sub: user.email }}
-      actions={
-        <>
-          <ActionBtn tone="navy" icon="plus">New Programme Application</ActionBtn>
-          <SelectPill label="All time" />
-        </>
-      }
       panel={
         selected ? (
-          <DetailPanel prog={selected} key={selected.id} busy={busy} onApprove={approve} onReject={reject} />
+          <DetailPanel
+            key={selected.id}
+            prog={selected}
+            busy={busy}
+            onClose={() => setSel(null)}
+            onApprove={approve}
+            onReject={reject}
+          />
         ) : (
           <div className="py-10 text-center text-[13px] text-slate-400">No programmes awaiting review.</div>
         )
       }
+      panelKey={selected?.id}
       panelWidth="w-[440px]"
     >
-      <StatRow cols={6}>
+      <StatRow cols={4}>
         {kpis.map((k) => (
           <StatCard key={k.label} {...k} />
         ))}
@@ -172,73 +181,34 @@ export default function HeaProgrammesPage() {
         }
         pad="p-4"
       >
-        <div className="mb-3 flex flex-wrap items-center gap-2.5">
+        <ErrorBanner error={error} onRetry={load} />
+        <div className="mb-4 flex flex-wrap items-center gap-2.5">
           <SearchBox className="w-72" placeholder="Search programmes..." value={q} onChange={setQ} />
-          <ToolButton icon="filter">Filter</ToolButton>
-          <ToolButton icon="download">Export</ToolButton>
-          <ToolButton icon="refresh" className="ml-auto" onClick={load} />
+          <SelectPill
+            label="Institution"
+            value={instFilter}
+            onChange={setInstFilter}
+            options={progInstitutions}
+          />
+          <SelectPill
+            label="NQF Level"
+            value={levelFilter}
+            onChange={setLevelFilter}
+            options={levels.map((l) => ({ value: String(l), label: `Level ${l}` }))}
+          />
+          <ToolButton icon="download" onClick={() => exportCSV("hea-programme-queue", columns, rows)}>Export</ToolButton>
+          <ToolButton icon="refresh" className="ml-auto" onClick={load}>Refresh</ToolButton>
         </div>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {pills.map((p) => {
-            const on = p.label === pill;
-            return (
-              <button
-                key={p.label}
-                onClick={() => setPill(p.label)}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold transition ${
-                  on
-                    ? "border-blue-600 bg-blue-600 text-white"
-                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {p.label}
-                <span className={`rounded-full px-1.5 text-[10.5px] ${on ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>
-                  {p.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {error && <div className="mb-3 text-[12px] font-medium text-red-600">{error}</div>}
         <DataTable
           rowKey="id"
+          loading={loading}
           activeKey={selected?.id}
           onRowClick={(r) => setSel(r.id)}
-          columns={[
-            {
-              key: "check",
-              label: "",
-              thClass: "w-8",
-              render: (r) => (
-                <input
-                  type="checkbox"
-                  className="rounded border-slate-300"
-                  checked={r.id === selected?.id}
-                  onClick={(e) => e.stopPropagation()}
-                  readOnly
-                />
-              ),
-            },
-            { key: "name", label: "Programme Title", render: (r) => <span className="font-semibold text-slate-800">{r.name}</span> },
-            { key: "institution", label: "Institution", render: (r) => r.institution || "—" },
-            { key: "qualificationRef", label: "Qualification Ref.", render: (r) => r.qualificationRef || "—" },
-            { key: "zqfLevel", label: "NQF Level", tdClass: "text-center", thClass: "text-center", render: (r) => r.zqfLevel || "—" },
-            { key: "createdAt", label: "Submission Date", render: (r) => fmtDate(r.createdAt) },
-            {
-              key: "status", label: "Status",
-              render: (r) => <Badge tone={STATUS_TONE[r.status] || "slate"}>{STATUS_LABEL[r.status] || r.status}</Badge>,
-            },
-            { key: "menu", label: "", render: () => <Icon name="dots" className="h-4 w-4 text-slate-400" /> },
-          ]}
-          rows={rows}
+          columns={columns}
+          rows={pager.rows}
+          emptyText="No programmes awaiting accreditation."
+          footer={<Pagination {...pager.props} className="border-t border-slate-100" />}
         />
-        {rows.length === 0 && (
-          <div className="border-b border-slate-100 py-8 text-center text-[13px] text-slate-400">No records yet.</div>
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Pagination summary={`Showing ${rows.length} of ${programmes.length} programmes`} page={1} pages={1} className="flex-1 px-0" />
-          <SelectPill label="10 / page" />
-        </div>
       </SectionCard>
     </PortalShell>
   );

@@ -1,92 +1,37 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import PortalShell from "../../../../components/portal/shell";
-import Icon from "../../../../components/portal/icons";
 import {
-  Badge, StatCard, StatRow, SectionCard, SelectPill, SearchBox,
-  ToolButton, DataTable, Pagination, ActionBtn,
+  Badge, StatCard, StatRow, SectionCard, SearchBox,
+  ToolButton, DataTable, Pagination, usePager, ActionBtn, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
-import { CHART, Donut, Legend, LineChart } from "../../../../components/portal/charts";
+import { CHART, Donut, Legend, Bars } from "../../../../components/portal/charts";
 import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 import { api } from "../../../../lib/api";
 
-const APPS_SERIES = [28, 40, 58, 45, 62, 80, 75];
-const APPS_LABELS = ["May 14", "May 15", "May 16", "May 17", "May 18", "May 19", "May 20"];
-
 const STATUS_LABEL = { pending: "Under Review", approved: "Approved", suspended: "Suspended" };
-const STATUS_TONE = { pending: "amber", approved: "green", suspended: "red" };
 const STATUS_COLOR = { approved: CHART.green, pending: CHART.amber, suspended: CHART.red };
-const NEXT_ACTION = { pending: "Review", approved: "Monitor", suspended: "Investigate" };
 const SECTOR_LABEL = { higher_ed: "Higher Education", university: "University", college: "College" };
+const CRED_TONE = { active: "green", pending: "amber", suspended: "orange", revoked: "red" };
 
-const ALERTS = [
-  { tone: "red", kind: "High Risk Case", sla: "02:18:34", org: "Cavendish University Zambia", body: "Non-compliance with academic staffing ratio", meta: "Case #HEA-2025-0154 · Raised by: Grace Banda · May 20, 2025", btn: "View Case" },
-  { tone: "amber", kind: "Compliance Alert", sla: "04:22:11", org: "Copperbelt University", body: "Overdue annual compliance report", meta: "Due date: May 15, 2025", btn: "View Alert" },
-  { tone: "amber", kind: "Document Request", sla: "03:11:07", org: "Mulungushi University", body: "Programme accreditation evidence pending", meta: "Requested: May 19, 2025", btn: "Respond" },
-  { tone: "red", kind: "Escalated", sla: "01:05:22", org: "Evelyn Hone College", body: "Failure to address prior compliance findings", meta: "Escalated by: Chanda Mwansa · May 19, 2025", btn: "View Case" },
-  { tone: "amber", kind: "Under Review", sla: "02:47:10", org: "University of Zambia", body: "Missing curriculum review and update evidence", meta: "Assigned to: Peter Kalumba · May 20, 2025", btn: "View Alert" },
-];
-
-function AlertCard({ alert }) {
-  const red = alert.tone === "red";
-  return (
-    <div className="rounded-xl border border-slate-200 p-3">
-      <div className="flex items-start justify-between gap-2">
-        <span className={`flex items-center gap-1.5 text-[12px] font-semibold ${red ? "text-red-600" : "text-amber-600"}`}>
-          <span className={`h-2 w-2 rounded-full ${red ? "bg-red-500" : "bg-amber-500"}`} />
-          {alert.kind}
-        </span>
-        <span className={`shrink-0 text-[11px] font-bold ${red ? "text-red-600" : "text-amber-600"}`}>SLA {alert.sla}</span>
-      </div>
-      <div className="mt-1.5 text-[13px] font-bold text-slate-900">{alert.org}</div>
-      <div className="mt-0.5 text-[12px] text-slate-600">{alert.body}</div>
-      <div className="mt-1 text-[11px] text-slate-400">{alert.meta}</div>
-      <div className="mt-2.5">
-        <button className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-50">
-          {alert.btn}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AlertsPanel() {
-  return (
-    <div>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <h2 className="text-[15px] font-bold text-slate-900">Regulatory Alerts &amp; Escalations</h2>
-          <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-600">5</span>
-        </div>
-        <button className="text-slate-400 hover:text-slate-600" aria-label="Close">
-          <Icon name="x" className="h-[18px] w-[18px]" />
-        </button>
-      </div>
-      <SelectPill label="All Alerts" className="mb-4 w-full justify-between" />
-      <div className="space-y-3">
-        {ALERTS.map((a, i) => (
-          <AlertCard key={i} alert={a} />
-        ))}
-      </div>
-      <div className="mt-4 text-center">
-        <button className="text-[12px] font-semibold text-blue-600 hover:underline">View all alerts →</button>
-      </div>
-    </div>
-  );
-}
+const shortLabel = (s = "") => (s.length > 12 ? `${s.slice(0, 11)}…` : s || "—");
 
 export default function HeaDashboardPage() {
-  const { ready, user, token } = usePortalGuard(["hea"]);
+  const { ready, token } = usePortalGuard(["hea"]);
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState(null);
   const [institutions, setInstitutions] = useState([]);
   const [pending, setPending] = useState([]);
   const [programmes, setProgrammes] = useState([]);
   const [monitoring, setMonitoring] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const [inst, pend, progs, mon] = await Promise.all([
         api.heaInstitutions(token),
@@ -99,9 +44,28 @@ export default function HeaDashboardPage() {
       setProgrammes(progs.programmes || []);
       setMonitoring(mon);
     } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => { if (ready) load(); }, [ready, load]);
+
+  async function approve(id) {
+    setBusy(id); setError(null);
+    try {
+      const r = await api.heaApprove(token, id);
+      if (r.warning) setError(r.warning);
+      await load();
+    } catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
+  async function reject(id) {
+    const reason = prompt("Reason for rejection (optional):");
+    if (reason === null) return;
+    setBusy(id); setError(null);
+    try { await api.heaReject(token, id, reason); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
 
   if (!ready) return null;
 
@@ -112,7 +76,8 @@ export default function HeaDashboardPage() {
   }, {});
   const accreditedProgrammes = institutions.reduce((n, i) => n + (i.accreditedPrograms?.length || 0), 0);
 
-  const issuedTotal = (monitoring?.summary || []).reduce((n, s) => n + (s.total || 0), 0);
+  const summary = monitoring?.summary || [];
+  const issuedTotal = summary.reduce((n, s) => n + (s.total || 0), 0);
   const kpis = [
     { icon: "bank", iconTone: "softblue", label: "Registered Institutions", value: String(institutions.length), sub: `${issuedTotal} credentials issued` },
     { icon: "clock", iconTone: "amber", label: "Pending Accreditation", value: String(pending.length) },
@@ -130,12 +95,57 @@ export default function HeaDashboardPage() {
       pct: institutions.length ? `${((statusCounts[s] / institutions.length) * 100).toFixed(1)}%` : "0%",
     }));
 
-  const queue = [...institutions].sort(
-    (a, b) => ((a.heaStatus === "pending" ? 0 : 1) - (b.heaStatus === "pending" ? 0 : 1))
+  const issuanceGroups = [...summary]
+    .sort((a, b) => (b.total || 0) - (a.total || 0))
+    .slice(0, 8)
+    .map((s) => ({ label: shortLabel(s.institution), values: [s.active || 0, s.revoked || 0] }));
+
+  const queueRows = pending.filter(
+    (r) => !q || (r.institution + (r.sector || "")).toLowerCase().includes(q.toLowerCase())
   );
-  const rows = queue.filter(
-    (r) => !q || (r.institution + (r.sector || "") + (r.heaStatus || "")).toLowerCase().includes(q.toLowerCase())
+  const pager = usePager(queueRows, 10, [q]);
+
+  const recent = (monitoring?.recent || []).slice(0, 8);
+
+  const viewAll = (href, label = "View all →") => (
+    <Link href={href} className="text-[12px] font-semibold text-blue-600 hover:underline">
+      {label}
+    </Link>
   );
+
+  const queueColumns = [
+    { key: "institution", label: "Institution", render: (r) => <span className="font-semibold text-slate-800">{r.institution}</span> },
+    { key: "sector", label: "Type", csv: (r) => SECTOR_LABEL[r.sector] || r.sector || "", render: (r) => SECTOR_LABEL[r.sector] || r.sector || "—" },
+    { key: "appType", label: "Application Type", csv: (r) => (r.selfRegistered ? "Self-Registration" : "HEA Registered"), render: (r) => (r.selfRegistered ? "Self-Registration" : "HEA Registered") },
+    { key: "createdAt", label: "Submitted On", csv: (r) => fmtDate(r.createdAt), render: (r) => fmtDate(r.createdAt) },
+    {
+      key: "onChain", label: "On-Chain", csv: (r) => (r.onChain ? "Anchored" : "Pending"),
+      render: (r) => <Badge tone={r.onChain ? "outline" : "amber"}>{r.onChain ? "Anchored" : "Pending"}</Badge>,
+    },
+    {
+      key: "actions", label: "Decision", csv: () => "",
+      render: (r) => (
+        <span className="flex items-center gap-2">
+          <ActionBtn
+            tone="green"
+            className="!px-2.5 !py-1 text-[12px]"
+            disabled={busy === r.id}
+            onClick={(e) => { e.stopPropagation(); approve(r.id); }}
+          >
+            {busy === r.id ? "Working…" : "Approve"}
+          </ActionBtn>
+          <ActionBtn
+            tone="softred"
+            className="!px-2.5 !py-1 text-[12px]"
+            disabled={busy === r.id}
+            onClick={(e) => { e.stopPropagation(); reject(r.id); }}
+          >
+            Reject
+          </ActionBtn>
+        </span>
+      ),
+    },
+  ];
 
   return (
     <PortalShell
@@ -143,16 +153,9 @@ export default function HeaDashboardPage() {
       active="dashboard"
       title="HEA Portal – Dashboard Overview"
       subtitle="Real-time overview of higher education regulation, accreditation, compliance and evidence shared with ZAQA."
-      user={{ name: user.name || user.email, sub: user.email }}
-      actions={
-        <>
-          <ActionBtn tone="navy" icon="plus">New Application</ActionBtn>
-          <SelectPill label="Last 7 days" />
-        </>
-      }
-      panel={<AlertsPanel />}
-      panelWidth="w-[380px]"
     >
+      <ErrorBanner error={error} onRetry={load} />
+
       <StatRow cols={5}>
         {kpis.map((k) => (
           <StatCard key={k.label} {...k} />
@@ -160,19 +163,33 @@ export default function HeaDashboardPage() {
       </StatRow>
 
       <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <SectionCard title="Accreditation Applications Over Time" action={<SelectPill label="Day" />}>
-          <LineChart
-            series={[{ points: APPS_SERIES, color: CHART.blue, label: "Applications", area: true }]}
-            labels={APPS_LABELS}
-            height={190}
-          />
+        <SectionCard title="Credential Issuance by Institution" action={viewAll("/hea/compliance", "View compliance →")}>
+          {issuanceGroups.length === 0 ? (
+            <div className="py-10 text-center text-[13px] text-slate-400">
+              {loading ? "Loading…" : "No credentials issued yet."}
+            </div>
+          ) : (
+            <>
+              <Bars groups={issuanceGroups} colors={[CHART.green, CHART.red]} height={180} />
+              <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1">
+                {[
+                  { label: "Active", color: CHART.green },
+                  { label: "Revoked", color: CHART.red },
+                ].map((it) => (
+                  <span key={it.label} className="flex items-center gap-2 text-[12px] text-slate-600">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: it.color }} />
+                    {it.label}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
         </SectionCard>
-        <SectionCard
-          title="Accreditation Status Distribution"
-          action={<button className="text-[12px] font-semibold text-blue-600 hover:underline">View full breakdown →</button>}
-        >
+        <SectionCard title="Accreditation Status Distribution" action={viewAll("/hea/institutions", "View all institutions →")}>
           {statusDist.length === 0 ? (
-            <div className="py-10 text-center text-[13px] text-slate-400">No records yet.</div>
+            <div className="py-10 text-center text-[13px] text-slate-400">
+              {loading ? "Loading…" : "No records yet."}
+            </div>
           ) : (
             <div className="flex flex-wrap items-center gap-6">
               <Donut
@@ -198,42 +215,45 @@ export default function HeaDashboardPage() {
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">{pending.length}</span>
           </span>
         }
+        action={viewAll("/hea/institutions")}
+        className="mb-5"
         pad="p-4"
       >
         <div className="mb-4 flex flex-wrap items-center gap-2.5">
-          <SearchBox className="w-72" placeholder="Search institutions..." value={q} onChange={setQ} />
-          <ToolButton icon="filter">Filter</ToolButton>
-          <ToolButton icon="download">Export</ToolButton>
-          <ToolButton icon="refresh" className="ml-auto" onClick={load} />
+          <SearchBox className="w-72" placeholder="Search pending institutions..." value={q} onChange={setQ} />
+          <ToolButton icon="download" onClick={() => exportCSV("hea-accreditation-queue", queueColumns, queueRows)}>
+            Export
+          </ToolButton>
+          <ToolButton icon="refresh" className="ml-auto" onClick={load}>Refresh</ToolButton>
         </div>
-        {error && <div className="mb-3 text-[12px] font-medium text-red-600">{error}</div>}
         <DataTable
           rowKey="id"
-          activeKey={sel}
-          onRowClick={(r) => setSel(r.id)}
+          loading={loading}
+          columns={queueColumns}
+          rows={pager.rows}
+          emptyText="No institutions awaiting accreditation."
+          footer={<Pagination {...pager.props} className="border-t border-slate-100" />}
+        />
+      </SectionCard>
+
+      <SectionCard title="Recent Credentials Issued" action={viewAll("/hea/evidence")} pad="p-4">
+        <DataTable
+          rowKey="credentialHash"
+          loading={loading}
           columns={[
-            { key: "institution", label: "Institution", render: (r) => <span className="font-semibold text-slate-800">{r.institution}</span> },
-            { key: "sector", label: "Type", render: (r) => SECTOR_LABEL[r.sector] || r.sector || "—" },
-            { key: "appType", label: "Application Type", render: (r) => (r.selfRegistered ? "Self-Registration" : "HEA Registered") },
-            { key: "approvedBy", label: "Approved By", render: (r) => r.approvedBy || "—" },
+            { key: "subjectName", label: "Graduate", render: (r) => <span className="font-semibold text-slate-800">{r.subjectName || "—"}</span> },
+            { key: "qualification", label: "Qualification", render: (r) => r.qualification || "—" },
+            { key: "institution", label: "Institution", render: (r) => r.institution || "—" },
+            { key: "zqfLevel", label: "NQF Level", render: (r) => r.zqfLevel || "—" },
             {
               key: "status", label: "Status",
-              render: (r) => <Badge tone={STATUS_TONE[r.heaStatus] || "slate"}>{STATUS_LABEL[r.heaStatus] || r.heaStatus || "—"}</Badge>,
+              render: (r) => <Badge tone={CRED_TONE[r.status] || "slate"}>{r.status || "—"}</Badge>,
             },
-            { key: "submitted", label: "Submitted On", render: (r) => fmtDate(r.createdAt) },
-            { key: "next", label: "Next Action", render: (r) => NEXT_ACTION[r.heaStatus] || "—" },
-            {
-              key: "onChain", label: "On-Chain",
-              render: (r) => <Badge tone={r.onChain ? "outline" : "amber"}>{r.onChain ? "Anchored" : "Pending"}</Badge>,
-            },
-            { key: "menu", label: "", render: () => <Icon name="dots" className="h-4 w-4 text-slate-400" /> },
+            { key: "issuedAt", label: "Issued", render: (r) => fmtDate(r.issuedAt) },
           ]}
-          rows={rows}
+          rows={recent}
+          emptyText="No credentials issued yet."
         />
-        {rows.length === 0 && (
-          <div className="border-b border-slate-100 py-8 text-center text-[13px] text-slate-400">No records yet.</div>
-        )}
-        <Pagination summary={`Showing ${rows.length} of ${queue.length} institutions`} page={1} pages={1} />
       </SectionCard>
     </PortalShell>
   );

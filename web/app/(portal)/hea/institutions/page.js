@@ -2,12 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import PortalShell from "../../../../components/portal/shell";
-import Icon from "../../../../components/portal/icons";
 import {
   Badge, Avatar, StatCard, StatRow, StatusTabs, SectionCard,
-  SelectPill, SearchBox, ToolButton, DataTable, Pagination, Timeline,
-  CheckItem, KV, ActionBtn,
+  SelectPill, SearchBox, ToolButton, DataTable, Pagination, usePager,
+  Timeline, KV, ActionBtn, PanelHeader, Modal, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
+import CaseTimeline from "../../../../components/portal/CaseTimeline";
 import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 import { api, openBlob } from "../../../../lib/api";
 
@@ -15,24 +15,11 @@ const STATUS_LABEL = { pending: "Under Review", approved: "Approved", suspended:
 const STATUS_TONE = { pending: "amber", approved: "green", suspended: "red" };
 const SECTOR_LABEL = { higher_ed: "Higher Education", university: "University", college: "College" };
 
-// Static design chrome — required-document checklist has no backend counterpart.
-const CHECKLIST = [
-  { state: "ok", label: "Certificate of Incorporation / Establishment" },
-  { state: "ok", label: "Constitution / Governance Documents" },
-  { state: "ok", label: "Strategic Plan (2025–2029)" },
-  { state: "ok", label: "Financial Projections (3 Years)" },
-  { state: "ok", label: "Campus Master Plan & Infrastructure Details" },
-  { state: "ok", label: "Academic Programmes Overview" },
-  { state: "missing", label: "Evidence of Land Tenure" },
-  { state: "warn", label: "Audited Financial Statements (Last 2 Years)" },
-  { state: "warn", label: "Staffing Plan & Organisational Structure" },
-  { state: "missing", label: "Library & E-Learning Resources Plan" },
-];
-
 const short = (v) => (v && v.length > 22 ? `${v.slice(0, 12)}…${v.slice(-6)}` : v || "—");
 
-function DetailPanel({ inst, busy, onApprove, onReject, onReturn, onViewDoc }) {
+function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onViewDoc, onSaveNote }) {
   const status = inst.heaStatus || "approved";
+  const [note, setNote] = useState(inst.heaNote || "");
   const timeline = [
     {
       title: "Application Submitted",
@@ -54,12 +41,7 @@ function DetailPanel({ inst, busy, onApprove, onReject, onReturn, onViewDoc }) {
   ];
   return (
     <div>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <h2 className="text-[15px] font-bold text-slate-900">Institution Details</h2>
-        <button className="text-slate-400 hover:text-slate-600" aria-label="Close">
-          <Icon name="x" className="h-[18px] w-[18px]" />
-        </button>
-      </div>
+      <PanelHeader title="Institution Details" onClose={onClose} />
 
       <div className="mb-4 flex items-start gap-3">
         <Avatar name={inst.institution} size="h-11 w-11" />
@@ -105,27 +87,27 @@ function DetailPanel({ inst, busy, onApprove, onReject, onReturn, onViewDoc }) {
         )}
       </SectionCard>
 
-      <SectionCard
-        title="Required Documents Checklist"
-        action={<span className="text-[11px] font-semibold text-slate-500">Sample checklist</span>}
-        className="mb-4"
-        pad="p-3"
-      >
-        {CHECKLIST.map((c) => (
-          <CheckItem key={c.label} state={c.state} label={c.label} />
-        ))}
+      <SectionCard title="History" className="mb-4" pad="p-4">
+        <CaseTimeline events={inst.events} />
       </SectionCard>
 
       <div className="mb-4">
         <div className="mb-1.5 text-[12.5px] font-bold text-slate-900">Notes</div>
         <textarea
           rows={3}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
           placeholder="Internal note..."
           className="w-full rounded-lg border border-slate-200 p-2.5 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
         />
-        <button className="mt-1.5 rounded-lg bg-slate-100 px-3.5 py-2 text-[13px] font-semibold text-slate-400" disabled>
-          Save Note
-        </button>
+        <ActionBtn
+          tone="outline"
+          className="mt-1.5"
+          disabled={busy === inst.id}
+          onClick={() => onSaveNote(inst, note)}
+        >
+          {busy === inst.id ? "Saving…" : "Save Note"}
+        </ActionBtn>
       </div>
 
       <div className="space-y-2.5">
@@ -140,7 +122,6 @@ function DetailPanel({ inst, busy, onApprove, onReject, onReturn, onViewDoc }) {
             {busy === inst.id ? "Working…" : "Approve Institution"}
           </ActionBtn>
         )}
-        <ActionBtn tone="softpurple" icon="calendar" full>Schedule Inspection</ActionBtn>
         {status !== "pending" && (
           <ActionBtn tone="softorange" full disabled={busy === inst.id} onClick={() => onReturn(inst.id)}>
             Return for Clarification
@@ -156,20 +137,95 @@ function DetailPanel({ inst, busy, onApprove, onReject, onReturn, onViewDoc }) {
   );
 }
 
+const INPUT_CLS =
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100";
+const EMPTY_REG = { institution: "", officerName: "", officerEmail: "", officerPassword: "", metamaskAddress: "" };
+
+function RegisterModal({ open, onClose, onCreated, token }) {
+  const [form, setForm] = useState(EMPTY_REG);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  async function save() {
+    setSaving(true); setError(null);
+    try {
+      const body = { ...form };
+      if (!body.metamaskAddress) delete body.metamaskAddress;
+      await api.heaRegister(token, body);
+      setForm(EMPTY_REG);
+      await onCreated();
+      onClose();
+    } catch (err) { setError(err.message); }
+    finally { setSaving(false); }
+  }
+
+  const fields = [
+    { key: "institution", label: "Institution Name", placeholder: "e.g. University of Zambia" },
+    { key: "officerName", label: "Officer Full Name", placeholder: "Jane Banda" },
+    { key: "officerEmail", label: "Officer Email", placeholder: "officer@institution.ac.zm", type: "email" },
+    { key: "officerPassword", label: "Officer Password", placeholder: "min 8 characters", type: "password" },
+    { key: "metamaskAddress", label: "Wallet Address (optional)", placeholder: "0x…" },
+  ];
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Register New Institution"
+      footer={
+        <>
+          <ActionBtn tone="outline" onClick={onClose}>Cancel</ActionBtn>
+          <ActionBtn tone="navy" disabled={saving} onClick={save}>
+            {saving ? "Registering…" : "Register Institution"}
+          </ActionBtn>
+        </>
+      }
+    >
+      <p className="mb-3 text-[12px] text-slate-500">
+        Registers a recognised higher-education institution as an approved issuer and creates its
+        first institution-officer account.
+      </p>
+      <div className="space-y-3">
+        {fields.map((f) => (
+          <div key={f.key}>
+            <label className="mb-1 block text-[11px] font-semibold text-slate-500">{f.label}</label>
+            <input
+              className={INPUT_CLS}
+              type={f.type || "text"}
+              value={form[f.key]}
+              onChange={set(f.key)}
+              placeholder={f.placeholder}
+            />
+          </div>
+        ))}
+      </div>
+      {error && <div className="mt-3 text-[12px] font-medium text-red-600">{error}</div>}
+    </Modal>
+  );
+}
+
 export default function HeaInstitutionsPage() {
-  const { ready, user, token } = usePortalGuard(["hea"]);
+  const { ready, token } = usePortalGuard(["hea"]);
   const [tab, setTab] = useState("All");
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState(null);
+  const [sector, setSector] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sel, setSel] = useState(undefined);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [institutions, setInstitutions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const r = await api.heaInstitutions(token);
       setInstitutions(r.institutions || []);
     } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => { if (ready) load(); }, [ready, load]);
@@ -199,6 +255,12 @@ export default function HeaInstitutionsPage() {
     catch (err) { setError(err.message); }
     finally { setBusy(null); }
   }
+  async function saveNote(inst, note) {
+    setBusy(inst.id); setError(null);
+    try { await api.heaSetStatus(token, inst.id, inst.heaStatus || "approved", note); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
   async function viewDoc(id) {
     try { openBlob(await api.accreditationDoc(token, "hea", id)); }
     catch (err) { setError(err.message); }
@@ -212,6 +274,7 @@ export default function HeaInstitutionsPage() {
     return m;
   }, {});
   const selfRegCount = institutions.filter((i) => i.selfRegistered).length;
+  const sectors = [...new Set(institutions.map((i) => i.sector).filter(Boolean))];
 
   const kpis = [
     { icon: "bank", iconTone: "softblue", label: "Total Institutions", value: String(institutions.length) },
@@ -224,24 +287,37 @@ export default function HeaInstitutionsPage() {
 
   const tabs = [
     { label: "All", count: institutions.length },
-    { label: "Submitted", count: 0 },
     { label: "Under Review", count: counts.pending || 0 },
-    { label: "Site Inspection", count: 0 },
     { label: "Approved", count: counts.approved || 0 },
-    { label: "Returned", count: 0 },
-    { label: "Rejected", count: counts.suspended || 0 },
+    { label: "Rejected / Suspended", count: counts.suspended || 0 },
   ];
-  const TAB_STATUS = { "Under Review": "pending", Approved: "approved", Rejected: "suspended" };
+  const TAB_STATUS = { "Under Review": "pending", Approved: "approved", "Rejected / Suspended": "suspended" };
 
   const rows = institutions.filter((r) => {
     const s = r.heaStatus || "approved";
-    if (tab !== "All") {
-      const want = TAB_STATUS[tab];
-      if (!want || s !== want) return false;
-    }
+    if (tab !== "All" && s !== TAB_STATUS[tab]) return false;
+    if (statusFilter && s !== statusFilter) return false;
+    if (sector && r.sector !== sector) return false;
     return !q || (r.institution + (r.sector || "")).toLowerCase().includes(q.toLowerCase());
   });
-  const selected = institutions.find((r) => r.id === sel) || rows[0] || institutions[0] || null;
+  const pager = usePager(rows, 10, [tab, q, sector, statusFilter]);
+  const selected = sel === null ? null : institutions.find((r) => r.id === sel) || rows[0] || null;
+
+  const columns = [
+    { key: "institution", label: "Institution Name", render: (r) => <span className="font-semibold text-slate-800">{r.institution}</span> },
+    { key: "sector", label: "Type", csv: (r) => SECTOR_LABEL[r.sector] || r.sector || "", render: (r) => SECTOR_LABEL[r.sector] || r.sector || "—" },
+    { key: "registration", label: "Registration", csv: (r) => (r.selfRegistered ? "Self-Registered" : "HEA Registered"), render: (r) => (r.selfRegistered ? "Self-Registered" : "HEA Registered") },
+    {
+      key: "status", label: "Application Status", csv: (r) => STATUS_LABEL[r.heaStatus] || r.heaStatus || "",
+      render: (r) => <Badge tone={STATUS_TONE[r.heaStatus] || "slate"}>{STATUS_LABEL[r.heaStatus] || r.heaStatus || "—"}</Badge>,
+    },
+    { key: "submitted", label: "Submitted Date", csv: (r) => fmtDate(r.createdAt), render: (r) => fmtDate(r.createdAt) },
+    { key: "approvedBy", label: "Approved By", csv: (r) => r.approvedBy || "", render: (r) => r.approvedBy || "—" },
+    {
+      key: "onChain", label: "On-Chain", csv: (r) => (r.onChain ? "Anchored" : "Pending"),
+      render: (r) => <Badge tone={r.onChain ? "outline" : "amber"}>{r.onChain ? "Anchored" : "Pending"}</Badge>,
+    },
+  ];
 
   return (
     <PortalShell
@@ -249,22 +325,29 @@ export default function HeaInstitutionsPage() {
       active="institutions"
       title="HEA Portal – Institution Registration & Accreditation"
       subtitle="Onboard new institutions and manage accreditation workflows in line with the Higher Education Act No. 4 of 2013."
-      user={{ name: user.name || user.email, sub: user.email }}
-      actions={<ActionBtn tone="navy" icon="plus">Register New Institution</ActionBtn>}
+      actions={
+        <ActionBtn tone="navy" icon="plus" onClick={() => setRegisterOpen(true)}>
+          Register New Institution
+        </ActionBtn>
+      }
       panel={
         selected ? (
           <DetailPanel
+            key={selected.id}
             inst={selected}
             busy={busy}
+            onClose={() => setSel(null)}
             onApprove={approve}
             onReject={reject}
             onReturn={returnForClarification}
             onViewDoc={viewDoc}
+            onSaveNote={saveNote}
           />
         ) : (
           <div className="py-10 text-center text-[13px] text-slate-400">No institution selected.</div>
         )
       }
+      panelKey={selected?.id}
       panelWidth="w-[400px]"
     >
       <StatRow cols={6}>
@@ -275,65 +358,41 @@ export default function HeaInstitutionsPage() {
 
       <div className="rounded-xl border border-slate-200 bg-white px-4 pt-1 shadow-card">
         <StatusTabs tabs={tabs} active={tab} onChange={setTab} />
+        <ErrorBanner error={error} onRetry={load} />
         <div className="mb-4 flex flex-wrap items-center gap-2.5">
           <SearchBox className="w-64" placeholder="Search institutions..." value={q} onChange={setQ} />
-          <SelectPill label="Type: All" />
-          <SelectPill label="Ownership: All" />
-          <SelectPill label="Status: All" />
-          <ToolButton icon="filter">Filters</ToolButton>
-          <ToolButton icon="download">Export</ToolButton>
-          <ToolButton icon="refresh" className="ml-auto" onClick={load} />
+          <SelectPill
+            label="Type"
+            value={sector}
+            onChange={setSector}
+            options={sectors.map((s) => ({ value: s, label: SECTOR_LABEL[s] || s }))}
+          />
+          <SelectPill
+            label="Status"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: "pending", label: "Under Review" },
+              { value: "approved", label: "Approved" },
+              { value: "suspended", label: "Suspended" },
+            ]}
+          />
+          <ToolButton icon="download" onClick={() => exportCSV("hea-institutions", columns, rows)}>Export</ToolButton>
+          <ToolButton icon="refresh" className="ml-auto" onClick={load}>Refresh</ToolButton>
         </div>
-        {error && <div className="mb-3 text-[12px] font-medium text-red-600">{error}</div>}
         <DataTable
           rowKey="id"
+          loading={loading}
           activeKey={selected?.id}
           onRowClick={(r) => setSel(r.id)}
-          columns={[
-            { key: "institution", label: "Institution Name", render: (r) => <span className="font-semibold text-slate-800">{r.institution}</span> },
-            { key: "sector", label: "Type", render: (r) => SECTOR_LABEL[r.sector] || r.sector || "—" },
-            { key: "ownership", label: "Registration", render: (r) => (r.selfRegistered ? "Self-Registered" : "HEA Registered") },
-            {
-              key: "status", label: "Application Status",
-              render: (r) => <Badge tone={STATUS_TONE[r.heaStatus] || "slate"}>{STATUS_LABEL[r.heaStatus] || r.heaStatus || "—"}</Badge>,
-            },
-            { key: "submitted", label: "Submitted Date", render: (r) => fmtDate(r.createdAt) },
-            { key: "approvedBy", label: "Approved By", render: (r) => r.approvedBy || "—" },
-            {
-              key: "onChain", label: "On-Chain",
-              render: (r) => <Badge tone={r.onChain ? "outline" : "amber"}>{r.onChain ? "Anchored" : "Pending"}</Badge>,
-            },
-            {
-              key: "action",
-              label: "Action",
-              render: (r) => (
-                <span className="flex items-center gap-2">
-                  <button
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[12px] font-semibold text-slate-600 hover:bg-slate-50"
-                    onClick={(e) => { e.stopPropagation(); setSel(r.id); }}
-                  >
-                    View
-                  </button>
-                  <Icon name="dots" className="h-4 w-4 text-slate-400" />
-                </span>
-              ),
-            },
-          ]}
-          rows={rows}
+          columns={columns}
+          rows={pager.rows}
+          emptyText="No institutions match the current filters."
+          footer={<Pagination {...pager.props} className="border-t border-slate-100" />}
         />
-        {rows.length === 0 && (
-          <div className="border-b border-slate-100 py-8 text-center text-[13px] text-slate-400">No records yet.</div>
-        )}
-        <Pagination
-          summary={`Showing ${rows.length} of ${institutions.length} results`}
-          page={1}
-          pages={1}
-          className="border-t border-slate-100"
-        />
-        <div className="flex justify-end pb-3">
-          <SelectPill label="10 / page" />
-        </div>
       </div>
+
+      <RegisterModal open={registerOpen} onClose={() => setRegisterOpen(false)} onCreated={load} token={token} />
     </PortalShell>
   );
 }

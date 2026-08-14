@@ -6,125 +6,54 @@ import Icon from "../../../../components/portal/icons";
 import { usePortalGuard, fmtDate, fmtDateTime } from "../../../../components/portal/auth";
 import { api } from "../../../../lib/api";
 import {
-  Badge, Avatar, StatCard, StatRow, SectionCard, SelectPill, SearchBox,
-  ToolButton, DataTable, Pagination, ActionBtn,
+  Badge, Avatar, StatCard, StatRow, SectionCard, SearchBox, ToolButton,
+  DataTable, Pagination, usePager, ActionBtn, Modal, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
 import { CHART, Donut, Legend } from "../../../../components/portal/charts";
 
 const ROLE_COLORS = [CHART.green, CHART.blue, CHART.teal, CHART.purple, CHART.amber, CHART.red];
 const ROLE_TONES = { admin: "purple", zaqa: "blue", hea: "teal", teveta: "amber", ecz: "green" };
 
-const PERMISSIONS = [
-  { label: "Dashboard Access", on: true },
-  { label: "Learner Records - View", on: true },
-  { label: "Results Import", on: true },
-  { label: "Certificate Register", on: true },
-  { label: "ZAQA Verification Requests", on: true },
-  { label: "Evidence for ZAQA", on: true },
-  { label: "Corrections & Replacements", on: true },
-  { label: "Audit & Reports", on: true },
-  { label: "User Management & Roles", on: false },
-  { label: "Settings", on: true },
-];
+const INPUT_CLS =
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100";
 
-function Field({ label, required, value, onChange, type = "text", placeholder }) {
+function Field({ label, value, onChange, type = "text", placeholder }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px] font-medium text-slate-400">
+      <label className="mb-1 block text-[11px] font-medium text-slate-500">
         {label}
-        {required && <span className="text-red-500">*</span>}
+        <span className="text-red-500">*</span>
       </label>
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+        className={INPUT_CLS}
       />
     </div>
   );
 }
 
-function UserFormPanel({ form, setForm, roles, busy, error, onSave }) {
-  return (
-    <div>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <h2 className="text-[15px] font-bold text-slate-900">Create User</h2>
-        <button className="text-slate-400 hover:text-slate-600" aria-label="Close">
-          <Icon name="x" className="h-[18px] w-[18px]" />
-        </button>
-      </div>
-
-      <SectionCard title="Account Details" className="mb-4">
-        <div className="space-y-3">
-          <Field label="Full Name" required value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Full name" />
-          <Field label="Email Address" required type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} placeholder="user@ecz.gov.zm" />
-          <Field label="Password" required type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} placeholder="Min. 8 characters" />
-          <div>
-            <div className="mb-1 text-[11px] font-medium text-slate-400">
-              Role<span className="text-red-500">*</span>
-            </div>
-            <select
-              value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value })}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-            >
-              {roles.map((r) => (
-                <option key={r} value={r}>{r.toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Permissions"
-        action={<button className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800">Select All</button>}
-        className="mb-4"
-      >
-        <div className="mb-2 text-[11px] text-slate-400">Select permissions for this role</div>
-        <div className="space-y-1">
-          {PERMISSIONS.map((p) => (
-            <div key={p.label} className="flex items-center gap-2.5 py-1">
-              <span
-                className={`flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded border ${
-                  p.on ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white"
-                }`}
-              >
-                {p.on && <Icon name="check" className="h-2.5 w-2.5" strokeWidth={3} />}
-              </span>
-              <span className="text-[12.5px] text-slate-700">{p.label}</span>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-
-      {error && <div className="mb-3 text-[13px] font-medium text-red-600">{error}</div>}
-
-      <div className="flex justify-end gap-2.5">
-        <ActionBtn tone="outline" onClick={() => setForm({ name: "", email: "", password: "", role: form.role })}>Cancel</ActionBtn>
-        <ActionBtn tone="darkgreen" disabled={busy} onClick={onSave}>
-          {busy ? "Saving…" : "Save User"}
-        </ActionBtn>
-      </div>
-    </div>
-  );
-}
+const EMPTY_FORM = { name: "", email: "", password: "", role: "ecz" };
 
 export default function EczUsersPage() {
   const { ready, user, token } = usePortalGuard(["ecz"]);
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState(null);
   const [users, setUsers] = useState([]);
   const [manageableRoles, setManageableRoles] = useState(["ecz"]);
   const [activity, setActivity] = useState([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "ecz" });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [formError, setFormError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.listUsers(token);
       setUsers(res.users || []);
@@ -132,9 +61,10 @@ export default function EczUsersPage() {
         setManageableRoles(res.manageableRoles);
         setForm((f) => (res.manageableRoles.includes(f.role) ? f : { ...f, role: res.manageableRoles[0] }));
       }
-      setError(null);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
     try {
       const act = await api.activity(token, "user");
@@ -157,7 +87,8 @@ export default function EczUsersPage() {
     setBusy(true);
     try {
       await api.createUser(token, form);
-      setForm({ name: "", email: "", password: "", role: form.role });
+      setForm({ ...EMPTY_FORM, role: manageableRoles[0] || "ecz" });
+      setModalOpen(false);
       await load();
     } catch (err) {
       setFormError(err.message);
@@ -169,16 +100,16 @@ export default function EczUsersPage() {
   async function onDelete(u) {
     if (!confirm(`Remove ${u.name || u.email} from the ECZ portal?`)) return;
     setDeleting(u.id);
+    setError(null);
     try { await api.deleteUser(token, u.id); await load(); }
     catch (err) { setError(err.message); }
     finally { setDeleting(null); }
   }
 
-  if (!ready) return null;
-
   const rows = users.filter(
     (u) => !q || ((u.name || "") + (u.email || "") + (u.roleLabel || u.role || "")).toLowerCase().includes(q.toLowerCase())
   );
+  const pg = usePager(rows, 10, [q]);
 
   const roleCounts = {};
   for (const u of users) {
@@ -193,54 +124,53 @@ export default function EczUsersPage() {
   }));
   const newest = users.length ? fmtDate(users[0].createdAt) : "—";
 
+  const csvCols = [
+    { key: "name", label: "Name", csv: (r) => r.name || "" },
+    { key: "email", label: "Email" },
+    { key: "role", label: "Role", csv: (r) => r.roleLabel || r.role },
+    { key: "createdAt", label: "Created", csv: (r) => fmtDate(r.createdAt) },
+  ];
+
+  if (!ready) return null;
+
   return (
     <PortalShell
       portal="ecz"
       active="users"
       title="ECZ Portal – User Management & Roles"
-      subtitle="Manage ECZ portal users, roles, permissions and access for BBACVS and ZAQA integration."
-      user={{ name: user.name || user.email, sub: user.email }}
+      subtitle="Manage ECZ portal user accounts and roles."
       actions={
         <>
-          <ActionBtn tone="darkgreen" icon="plus">Add New User</ActionBtn>
-          <ActionBtn tone="outline" icon="download">Export Users</ActionBtn>
+          <ActionBtn tone="darkgreen" icon="plus" onClick={() => { setFormError(null); setModalOpen(true); }}>
+            Add New User
+          </ActionBtn>
+          <ToolButton icon="download" onClick={() => exportCSV("ecz-users", csvCols, rows)}>
+            Export Users
+          </ToolButton>
         </>
       }
-      panel={
-        <UserFormPanel
-          form={form}
-          setForm={setForm}
-          roles={manageableRoles}
-          busy={busy}
-          error={formError}
-          onSave={onSave}
-        />
-      }
-      panelWidth="w-[380px]"
     >
-      <StatRow cols={5}>
-        <StatCard icon="users" iconTone="softgreen" label="Total Users" value={users.length} sub="Manageable by ECZ" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="Active Users" value={users.length} sub="All accounts active" />
-        <StatCard icon="users" iconTone="purple" label="Role Groups" value={roleEntries.length} sub="Across ECZ Portal" />
+      <StatRow cols={4}>
+        <StatCard icon="users" iconTone="softgreen" label="Total Users" value={String(users.length)} sub="Manageable by ECZ" />
+        <StatCard icon="users" iconTone="purple" label="Role Groups" value={String(roleEntries.length)} sub="Across ECZ Portal" />
         <StatCard icon="clock" iconTone="amber" label="Newest Account" value={newest} sub="Most recently created" />
         <StatCard icon="shield" iconTone="softblue" label="Your Account" value={(user.role || "ecz").toUpperCase()} sub={user.email} />
       </StatRow>
 
-      {error && <div className="mb-3 text-[13px] font-medium text-red-600">{error}</div>}
+      <ErrorBanner error={error} onRetry={load} />
 
       <div className="mb-5 rounded-xl border border-slate-200 bg-white shadow-card">
         <div className="border-b border-slate-100 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-800">Users ({users.length})</h3>
         </div>
         <div className="flex flex-wrap items-center gap-2.5 px-4 py-3">
-          <SearchBox className="w-96" placeholder="Search by name, email or role..." value={q} onChange={setQ} />
-          <ToolButton icon="filter">Filter</ToolButton>
-          <ToolButton icon="refresh" onClick={load} />
+          <SearchBox className="w-full sm:w-96" placeholder="Search by name, email or role..." value={q} onChange={setQ} />
+          <ToolButton icon="refresh" className="ml-auto" onClick={load} aria-label="Refresh" />
         </div>
         <DataTable
           rowKey="id"
-          activeKey={sel}
-          onRowClick={(r) => setSel(r.id)}
+          loading={loading}
+          emptyText="No users yet."
           columns={[
             {
               key: "name", label: "Full Name",
@@ -257,42 +187,27 @@ export default function EczUsersPage() {
               key: "role", label: "Role",
               render: (r) => <Badge tone={ROLE_TONES[r.role] || "slate"}>{r.roleLabel || r.role}</Badge>,
             },
-            {
-              key: "status", label: "Status",
-              render: () => <Badge tone="green" dot>Active</Badge>,
-            },
             { key: "createdAt", label: "Created", render: (r) => fmtDate(r.createdAt) },
             {
               key: "actions", label: "Actions",
-              render: (r) => (
-                <span className="flex items-center gap-2.5">
-                  {!r.self ? (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(r); }}
-                      disabled={deleting === r.id}
-                      className="text-red-400 hover:text-red-600 disabled:opacity-50"
-                      aria-label={`Remove ${r.email}`}
-                    >
-                      <Icon name="trash" className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    <Icon name="dots" className="h-4 w-4 text-slate-300" />
-                  )}
-                </span>
-              ),
+              render: (r) =>
+                !r.self ? (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(r); }}
+                    disabled={deleting === r.id}
+                    className="text-red-400 hover:text-red-600 disabled:opacity-50"
+                    aria-label={`Remove ${r.email}`}
+                  >
+                    <Icon name="trash" className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-slate-400">You</span>
+                ),
             },
           ]}
-          rows={rows}
-          footer={
-            rows.length === 0 ? (
-              <div className="px-4 py-8 text-center text-[13px] text-slate-400">No records yet.</div>
-            ) : null
-          }
+          rows={pg.rows}
+          footer={<Pagination {...pg.props} className="border-t border-slate-100" />}
         />
-        <div className="flex items-center justify-between gap-3 pr-3.5">
-          <Pagination summary={`Showing ${rows.length} of ${users.length} users`} page={1} pages={1} className="flex-1" />
-          <SelectPill label="10 / page" />
-        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -300,9 +215,9 @@ export default function EczUsersPage() {
           {users.length === 0 ? (
             <div className="py-10 text-center text-[13px] text-slate-400">No records yet.</div>
           ) : (
-            <div className="flex items-center gap-6">
+            <div className="flex flex-wrap items-center gap-6">
               <Donut segments={roleSegments} centerTitle={String(users.length)} centerSub="Users" />
-              <Legend items={roleLegend} className="flex-1" />
+              <Legend items={roleLegend} className="min-w-[180px] flex-1" />
             </div>
           )}
         </SectionCard>
@@ -333,6 +248,42 @@ export default function EczUsersPage() {
           )}
         </SectionCard>
       </div>
+
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Create User"
+        footer={
+          <>
+            <ActionBtn tone="outline" onClick={() => setModalOpen(false)}>Cancel</ActionBtn>
+            <ActionBtn tone="darkgreen" disabled={busy} onClick={onSave}>
+              {busy ? "Saving…" : "Save User"}
+            </ActionBtn>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Field label="Full Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Full name" />
+          <Field label="Email Address" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} placeholder="user@ecz.gov.zm" />
+          <Field label="Password" type="password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} placeholder="Min. 8 characters" />
+          <div>
+            <div className="mb-1 text-[11px] font-medium text-slate-500">
+              Role<span className="text-red-500">*</span>
+            </div>
+            <select
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+              disabled={manageableRoles.length === 1}
+              className={INPUT_CLS}
+            >
+              {manageableRoles.map((r) => (
+                <option key={r} value={r}>{r.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+          {formError && <div className="text-[13px] font-medium text-red-600">{formError}</div>}
+        </div>
+      </Modal>
     </PortalShell>
   );
 }

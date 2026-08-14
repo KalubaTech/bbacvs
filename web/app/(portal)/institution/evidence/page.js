@@ -1,342 +1,421 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PortalShell from "../../../../components/portal/shell";
-import Icon from "../../../../components/portal/icons";
 import {
-  Badge, StatCard, StatRow, SectionCard, SelectPill, SearchBox, ToolButton,
-  DataTable, Pagination, ProgressBar, TabBar, KVRow, KVGrid, FileRow, ActionBtn,
+  Badge, StatusTabs, SearchBox, ToolButton, DataTable, Pagination, usePager,
+  Modal, ErrorBanner, ActionBtn, KVGrid, PanelHeader, exportCSV,
 } from "../../../../components/portal/kit";
+import CaseTimeline from "../../../../components/portal/CaseTimeline";
 import { usePortalGuard, fmtDate, fmtDateTime } from "../../../../components/portal/auth";
-import { api } from "../../../../lib/api";
+import { api, openBlob } from "../../../../lib/api";
 
-// Programme accreditation status → design's "ZAQA Status" column.
-const STATUS_META = {
-  draft: { label: "Draft", tone: "slate", completeness: 60 },
-  pending: { label: "Submitted", tone: "blue", completeness: 100 },
-  approved: { label: "Approved", tone: "green", completeness: 100 },
-  rejected: { label: "Returned", tone: "red", completeness: 100 },
+const ZAQA_META = {
+  draft: { label: "Draft", tone: "slate" },
+  pending: { label: "Pending ZAQA", tone: "blue" },
+  validated: { label: "Validated", tone: "green" },
+  rejected: { label: "Rejected", tone: "red" },
+  suspicious: { label: "Flagged", tone: "amber" },
+  under_dispute: { label: "Disputed", tone: "amber" },
+  suspended: { label: "Suspended", tone: "red" },
+};
+const ZAQA_ORDER = Object.keys(ZAQA_META);
+
+const CRED_STATUS_META = {
+  active: { label: "Active", tone: "green" },
+  revoked: { label: "Revoked", tone: "red" },
+  suspended: { label: "Suspended", tone: "amber" },
+  pending: { label: "Pending anchor", tone: "slate" },
 };
 
-const PANEL_TABS = ["Overview", "Files", "Checklist", "Provenance", "Signature", "Sharing", "Communication Log"];
+const TYPE_OPTIONS = ["secondary", "diploma", "degree", "masters", "phd", "other"];
+const TYPE_LABEL = { secondary: "Secondary", diploma: "Diploma", degree: "Degree", masters: "Master's", phd: "PhD", other: "Other" };
 
-function PanelSection({ title, action, children, className = "" }) {
-  return (
-    <div className={`rounded-xl border border-slate-200 p-3.5 ${className}`}>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-[12.5px] font-bold text-slate-800">{title}</div>
-        {action && <button className="text-[11px] font-semibold text-blue-600 hover:underline">{action}</button>}
-      </div>
-      {children}
-    </div>
-  );
+const CORRECTIONS_TAB = "Corrections requested";
+
+const shortHash = (h) => (h && h.length > 18 ? `${h.slice(0, 10)}…${h.slice(-6)}` : h || "—");
+
+// The API's 409 body carries a friendly message, but the client wrapper surfaces
+// only the error code — translate it back for the officer.
+const METAMASK_MSG =
+  "This issuer signs with MetaMask — supersession requires server-held keys and is not available for MetaMask issuers yet.";
+
+function ZaqaBadge({ v }) {
+  const m = ZAQA_META[v] || { label: v || "—", tone: "slate" };
+  return <Badge tone={m.tone} dot>{m.label}</Badge>;
 }
 
-function PackagePanel({ pkg, officer, onSubmit, busy }) {
-  const [tab, setTab] = useState("Overview");
-  if (!pkg) {
+function DetailPanel({ cred, busy, error, onClose, onSubmitZaqa, onOpenCorrect }) {
+  if (!cred) {
     return (
       <div>
-        <h2 className="mb-3 text-[15px] font-bold text-slate-900">Package Details</h2>
-        <p className="text-[12.5px] text-slate-400">No records yet. Create programmes from the classic workbench to build evidence packages.</p>
+        <h2 className="mb-3 text-[15px] font-bold text-slate-900">Credential Details</h2>
+        <p className="text-[12.5px] text-slate-400">Select a credential to inspect its trust record.</p>
       </div>
     );
   }
-  const meta = STATUS_META[pkg.status] || STATUS_META.draft;
-  const complete = meta.completeness === 100;
+  const statusMeta = CRED_STATUS_META[cred.status] || { label: cred.status, tone: "slate" };
   return (
     <div>
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <h2 className="text-[15px] font-bold text-slate-900">Package Details</h2>
-        <Badge tone={meta.tone} dot>{meta.label}</Badge>
-      </div>
-      <div className="mb-3">
-        <div className="flex items-center gap-1.5 text-[15px] font-bold text-slate-900">
-          {pkg.name}
-          <Icon name="clipboard" className="h-3.5 w-3.5 text-slate-400" />
+      <PanelHeader title="Credential Details" badge={<ZaqaBadge v={cred.zaqaValidation} />} onClose={onClose} />
+      <ErrorBanner error={error} />
+
+      {cred.correctionRequest?.status === "open" && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-800">
+          <div className="font-bold">Correction requested by the graduate</div>
+          <div className="mt-0.5">{cred.correctionRequest.message}</div>
+          <div className="mt-1 text-[11px] text-amber-700/80">
+            Requested {fmtDateTime(cred.correctionRequest.requestedAt)} — issuing a corrected credential resolves this request.
+          </div>
         </div>
-        <div className="text-[12px] text-slate-500">Programme Accreditation</div>
+      )}
+      {cred.supersededBy && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[12.5px] text-slate-600">
+          This credential was revoked as an administrative error and replaced by{" "}
+          <span className="font-mono font-semibold">{shortHash(cred.supersededBy)}</span>.
+        </div>
+      )}
+      {cred.supersedes && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-[12.5px] text-slate-600">
+          Issued as a correction superseding <span className="font-mono font-semibold">{shortHash(cred.supersedes)}</span>.
+        </div>
+      )}
+      {cred.suspension?.reason && cred.status === "suspended" && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[12.5px] text-red-700">
+          <span className="font-bold">Suspended:</span> {cred.suspension.reason}
+        </div>
+      )}
+
+      <div className="mb-4 rounded-xl border border-slate-200 p-3.5">
+        <KVGrid
+          cols={2}
+          items={[
+            { label: "Graduate", value: cred.subjectName },
+            { label: "Qualification", value: cred.qualification },
+            { label: "Graduation year", value: cred.graduationYear },
+            { label: "ZQF level", value: cred.zqfLevel ? `Level ${cred.zqfLevel}` : "—" },
+            { label: "Type", value: TYPE_LABEL[cred.credentialType] || cred.credentialType || "—" },
+            { label: "Credential status", value: <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge> },
+            { label: "Issued", value: fmtDate(cred.issuedAt) },
+            { label: "ZAQA reference", value: cred.zaqaRef || "—" },
+          ]}
+        />
+        <div className="mt-3 text-[11px] text-slate-400">
+          Hash: <span className="break-all font-mono">{cred.credentialHash}</span>
+        </div>
       </div>
 
-      <div className="mb-4 overflow-x-auto [scrollbar-width:none]">
-        <TabBar tabs={PANEL_TABS} active={tab} onChange={setTab} accent="border-emerald-600 text-emerald-700" />
-      </div>
-
-      <div className="space-y-3">
-        <PanelSection title="Overview">
-          <KVRow label="Programme" value={pkg.name} />
-          <KVRow label="Institution" value={pkg.institution || "—"} />
-          <KVRow label="ZQF Level" value={pkg.zqfLevel ? `Level ${pkg.zqfLevel}` : "—"} />
-          <KVRow label="Qualification Ref" value={pkg.qualificationRef || "—"} />
-          <KVRow label="Evidence Type" value="Programme Accreditation" />
-          <KVRow label="Date Compiled" value={fmtDate(pkg.createdAt)} />
-          <KVRow label="Assigned Officer" value={officer || "—"} />
-          {pkg.note ? <KVRow label="Regulator Note" value={pkg.note} /> : null}
-          <div
-            className={`mt-2 flex items-center gap-2.5 rounded-lg border p-2.5 ${
-              complete ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
-            }`}
-          >
-            <Icon
-              name={complete ? "checkCircle" : "clock"}
-              className={`h-4 w-4 shrink-0 ${complete ? "text-emerald-600" : "text-amber-600"}`}
-            />
-            <span className={`flex-1 text-[11.5px] leading-snug ${complete ? "text-emerald-700" : "text-amber-700"}`}>
-              {complete
-                ? "Package Complete — This programme has been submitted for regulator review."
-                : "Package Incomplete — This programme is still a draft and has not been submitted."}
-            </span>
-            <span className={`text-[13px] font-bold ${complete ? "text-emerald-700" : "text-amber-700"}`}>
-              {meta.completeness}%
-            </span>
-          </div>
-        </PanelSection>
-
-        <PanelSection title="Attached Files" action="View All">
-          <div className="space-y-2">
-            <FileRow name="Self Evaluation Report.pdf" size="2.4 MB" />
-            <FileRow name="Course List.xlsx" size="340 KB" tone="softgreen" />
-            <FileRow name="Validation Matrix.docx" size="1.1 MB" tone="softblue" />
-            <FileRow name="Staff Qualifications.pdf" size="1.6 MB" />
-          </div>
-        </PanelSection>
-
-        <PanelSection title="Validation Checklist" action="View Full Checklist">
-          <ProgressBar value={meta.completeness} tone={complete ? "green" : "amber"} />
-          <div className="mt-1.5 text-[11.5px] text-slate-500">
-            {complete ? "12 / 12 completed" : "Draft — submit to complete"}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge tone="green">{complete ? "12 Completed" : "8 Completed"}</Badge>
-            <Badge tone="softblue">{complete ? "0 In Progress" : "4 In Progress"}</Badge>
-            <Badge tone="softred">0 Missing</Badge>
-            <Badge tone="slate">0 Not Applicable</Badge>
-          </div>
-        </PanelSection>
-
-        <PanelSection title="Provenance Summary" action="View Details">
-          <KVGrid
-            cols={2}
-            items={[
-              { label: "Documents Disclosed", value: "4" },
-              { label: "Data Sources", value: "2" },
-              { label: "Collected By", value: officer || "—" },
-              { label: "Origin Day", value: fmtDate(pkg.createdAt) },
-              { label: "Origin System", value: "Institution SIS" },
-              { label: "Chain of Custody", value: "Complete ✓" },
-            ]}
-          />
-        </PanelSection>
-
-        <PanelSection title="Digital Signature" action="View Signature Details">
-          <KVRow label="Signed By" value={officer || "—"} />
-          <KVRow label="Role" value="Institution Admin" />
-          <KVRow label="Signed On" value={fmtDate(pkg.createdAt)} />
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge tone="green" icon="shieldCheck">Digitally Signed</Badge>
-            <Badge tone="green">✓ Valid Signature</Badge>
-          </div>
-        </PanelSection>
-
-        <PanelSection title="Secure Sharing" action="View Sharing Details">
-          <KVRow label="Status" value="Not Shared" />
-          <KVRow label="Access" value="None" />
-          <KVRow label="Expiry" value="—" />
-          <ActionBtn tone="outline" icon="share" className="mt-2 !px-2.5 !py-1.5 !text-[12px]">
-            Share Securely
+      <div className="mb-4 space-y-2">
+        <div className="text-[12.5px] font-bold text-slate-900">Actions</div>
+        {cred.zaqaValidation === "draft" && (
+          <ActionBtn tone="blue" icon="send" full disabled={busy} onClick={() => onSubmitZaqa(cred)}>
+            {busy ? "Working…" : "Submit to ZAQA"}
           </ActionBtn>
-        </PanelSection>
-
-        <PanelSection title="Communication Log with ZAQA" action="View Full Log">
-          <div className="space-y-2.5">
-            {[
-              {
-                icon: pkg.status === "draft" ? "clock" : "check",
-                cls: pkg.status === "draft" ? "bg-amber-100 text-amber-600" : "bg-emerald-100 text-emerald-600",
-                text: pkg.status === "draft"
-                  ? `Programme drafted — awaiting submission`
-                  : `Programme ${STATUS_META[pkg.status]?.label.toLowerCase() || pkg.status} — ${pkg.name}`,
-                time: fmtDateTime(pkg.createdAt),
-              },
-              { icon: "send", cls: "bg-blue-100 text-blue-600", text: `Programme created — ${pkg.name}`, time: fmtDateTime(pkg.createdAt) },
-            ].map((l, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${l.cls}`}>
-                  <Icon name={l.icon} className="h-3 w-3" />
-                </span>
-                <div className="min-w-0 leading-tight">
-                  <div className="text-[12px] font-medium text-slate-700">{l.text}</div>
-                  <div className="mt-0.5 text-[11px] text-slate-400">{l.time}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </PanelSection>
+        )}
+        {cred.status === "active" && (
+          <ActionBtn tone="softorange" icon="edit" full disabled={busy} onClick={() => onOpenCorrect(cred)}>
+            Issue corrected credential
+          </ActionBtn>
+        )}
+        {cred.zaqaValidation !== "draft" && cred.status !== "active" && (
+          <p className="text-[12px] text-slate-400">No actions are available for this credential in its current state.</p>
+        )}
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2.5">
-        <ActionBtn
-          tone="darkgreen"
-          icon="send"
-          full
-          disabled={pkg.status !== "draft" || busy === pkg.id}
-          onClick={() => onSubmit(pkg.id)}
-          className={pkg.status !== "draft" ? "opacity-50" : ""}
-        >
-          {busy === pkg.id ? "Sending…" : "Send to ZAQA"}
-        </ActionBtn>
-        <ActionBtn tone="orange" full>Request More Evidence</ActionBtn>
-        <ActionBtn tone="outline" icon="download" full>Download Summary</ActionBtn>
-        <ActionBtn tone="outline" icon="chevronDown" full />
+      <div className="rounded-xl border border-slate-200 p-3.5">
+        <div className="mb-2.5 text-[12.5px] font-bold text-slate-800">Case History</div>
+        <CaseTimeline events={cred.events} />
       </div>
     </div>
   );
 }
 
 export default function InstitutionEvidencePage() {
-  const { ready, user, token } = usePortalGuard(["issuer"]);
-  const [programmes, setProgrammes] = useState([]);
+  const { ready, token } = usePortalGuard(["issuer"]);
+  const [creds, setCreds] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(null);
+  const [panelError, setPanelError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [certBusy, setCertBusy] = useState(false);
+  const [tab, setTab] = useState("All");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
+  // Correction (supersede) modal
+  const [correctFor, setCorrectFor] = useState(null);
+  const [form, setForm] = useState({});
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const load = useCallback(async () => {
     if (!token) return;
+    setLoading(true);
+    setError(null);
     try {
-      setError(null);
-      const res = await api.myProgrammes(token);
-      setProgrammes(res.programmes || []);
+      setCreds((await api.myIssued(token)).credentials || []);
     } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => { if (ready) load(); }, [ready, load]);
 
-  async function onSubmit(id) {
-    setBusy(id);
-    try { await api.submitProgramme(token, id); await load(); }
-    catch (err) { setError(err.message); }
-    finally { setBusy(null); }
+  async function submitZaqa(cred) {
+    setBusy(true);
+    setPanelError(null);
+    try {
+      await api.submitToZaqa(token, cred.credentialHash);
+      await load();
+    } catch (err) { setPanelError(err.message); }
+    finally { setBusy(false); }
   }
 
-  if (!ready) return null;
+  function openCorrect(cred) {
+    setCorrectFor(cred);
+    setPanelError(null);
+    setForm({
+      subjectName: cred.subjectName || "",
+      qualification: cred.qualification || "",
+      graduationYear: String(cred.graduationYear || ""),
+      zqfLevel: cred.zqfLevel ? String(cred.zqfLevel) : "",
+      credentialType: cred.credentialType || "other",
+    });
+  }
 
-  const counts = programmes.reduce((m, p) => ((m[p.status] = (m[p.status] || 0) + 1), m), {});
-  const kpis = [
-    { icon: "folder", iconTone: "softblue", label: "Evidence Packages", value: String(programmes.length), sub: "All programmes" },
-    { icon: "clock", iconTone: "orange", label: "Draft Packages", value: String(counts.draft || 0), sub: "Not yet submitted" },
-    { icon: "send", iconTone: "softgreen", label: "Submitted for Review", value: String(counts.pending || 0), sub: "Awaiting regulator" },
-    { icon: "alert", iconTone: "softred", label: "Returned / Rejected", value: String(counts.rejected || 0), sub: "Need clarification" },
-    { icon: "checkCircle", iconTone: "softgreen", label: "Approved Programmes", value: String(counts.approved || 0), sub: "Accredited" },
+  async function submitCorrect() {
+    setBusy(true);
+    setPanelError(null);
+    try {
+      await api.supersedeCredential(token, correctFor.credentialHash, {
+        subjectName: form.subjectName.trim(),
+        qualification: form.qualification.trim(),
+        graduationYear: Number(form.graduationYear),
+        ...(form.zqfLevel ? { zqfLevel: Number(form.zqfLevel) } : {}),
+        credentialType: form.credentialType,
+      });
+      setCorrectFor(null);
+      await load();
+    } catch (err) {
+      setPanelError(err.message === "metamask_unsupported" ? METAMASK_MSG : err.message);
+      setCorrectFor(null);
+    } finally { setBusy(false); }
+  }
+
+  async function downloadAccreditation() {
+    setCertBusy(true);
+    setError(null);
+    try { openBlob(await api.myAccreditationCertificate(token), "accreditation-certificate.pdf"); }
+    catch (err) { setError(err.message); }
+    finally { setCertBusy(false); }
+  }
+
+  const counts = useMemo(() => {
+    const m = creds.reduce((acc, c) => {
+      const s = c.zaqaValidation || "draft";
+      acc[s] = (acc[s] || 0) + 1;
+      return acc;
+    }, {});
+    m.__corrections = creds.filter((c) => c.correctionRequest?.status === "open").length;
+    return m;
+  }, [creds]);
+
+  const tabs = [
+    { label: "All", count: creds.length },
+    ...ZAQA_ORDER.map((s) => ({ label: ZAQA_META[s].label, count: counts[s] || 0 })),
+    { label: CORRECTIONS_TAB, count: counts.__corrections },
+  ];
+  const LABEL_TO_ZAQA = Object.fromEntries(ZAQA_ORDER.map((s) => [ZAQA_META[s].label, s]));
+
+  const rows = useMemo(() => {
+    return creds.filter((c) => {
+      if (tab === CORRECTIONS_TAB) {
+        if (c.correctionRequest?.status !== "open") return false;
+      } else if (tab !== "All") {
+        if ((c.zaqaValidation || "draft") !== LABEL_TO_ZAQA[tab]) return false;
+      }
+      return !q || `${c.subjectName} ${c.qualification} ${c.graduationYear} ${c.credentialHash}`.toLowerCase().includes(q.toLowerCase());
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creds, tab, q]);
+
+  const pg = usePager(rows, 10, [tab, q]);
+  const selected = creds.find((c) => c.credentialHash === sel) || null;
+
+  const columns = [
+    {
+      key: "subjectName",
+      label: "Graduate",
+      render: (r) => (
+        <span className="block leading-tight">
+          <span className="block font-semibold text-slate-800">{r.subjectName}</span>
+          <span className="block font-mono text-[10.5px] text-slate-400">{shortHash(r.credentialHash)}</span>
+        </span>
+      ),
+      csv: (r) => r.subjectName,
+    },
+    { key: "qualification", label: "Qualification" },
+    { key: "graduationYear", label: "Year" },
+    {
+      key: "status", label: "Status",
+      render: (r) => {
+        const m = CRED_STATUS_META[r.status] || { label: r.status, tone: "slate" };
+        return <Badge tone={m.tone}>{m.label}</Badge>;
+      },
+      csv: (r) => r.status,
+    },
+    {
+      key: "zaqaValidation", label: "ZAQA Validation",
+      render: (r) => (
+        <span className="flex items-center gap-1.5">
+          <ZaqaBadge v={r.zaqaValidation} />
+          {r.correctionRequest?.status === "open" && <Badge tone="amber" icon="edit">Correction</Badge>}
+        </span>
+      ),
+      csv: (r) => r.zaqaValidation || "draft",
+    },
+    {
+      key: "issuedAt", label: "Issued", tdClass: "whitespace-nowrap",
+      render: (r) => fmtDate(r.issuedAt), csv: (r) => r.issuedAt || "",
+    },
   ];
 
-  const rows = programmes.filter(
-    (p) => !q || `${p.id} ${p.name} ${p.qualificationRef || ""} ${p.status}`.toLowerCase().includes(q.toLowerCase())
-  );
-  const selected = rows.find((p) => p.id === sel) || rows[0] || null;
-  const officer = user.name || user.email;
+  if (!ready) return null;
 
   return (
     <PortalShell
       portal="institution"
       active="evidence"
-      title="Institution Portal – Evidence Submission & ZAQA Requests"
-      subtitle="Manage evidence packages and respond to ZAQA requests related to accreditation, qualification validation, and credential verification."
-      user={{ name: user.name || user.email, sub: user.email }}
-      panel={<PackagePanel pkg={selected} officer={officer} onSubmit={onSubmit} busy={busy} />}
-      panelWidth="w-[420px]"
+      title="Evidence & ZAQA Requests"
+      subtitle="The trust record of every credential you issued — submit drafts to ZAQA, resolve correction requests, and issue corrected credentials."
+      actions={
+        <>
+          <ToolButton icon="award" onClick={downloadAccreditation} disabled={certBusy} className={certBusy ? "opacity-50" : ""}>
+            {certBusy ? "Preparing…" : "Download accreditation certificate"}
+          </ToolButton>
+          <ToolButton icon="download" onClick={() => exportCSV("credentials-trust", columns, rows)}>
+            Export CSV
+          </ToolButton>
+          <ToolButton icon="refresh" aria-label="Refresh" onClick={load} />
+        </>
+      }
+      panel={
+        <DetailPanel
+          cred={selected}
+          busy={busy}
+          error={panelError}
+          onClose={() => { setSel(null); setPanelError(null); }}
+          onSubmitZaqa={submitZaqa}
+          onOpenCorrect={openCorrect}
+        />
+      }
+      panelKey={selected?.credentialHash}
+      panelWidth="w-[440px]"
     >
-      <StatRow cols={5}>
-        {kpis.map((k) => (
-          <StatCard key={k.label} {...k} />
-        ))}
-      </StatRow>
+      <ErrorBanner error={error} onRetry={load} />
 
-      <SectionCard
-        title="Evidence Packages"
-        pad="p-0"
-        action={
-          <div className="flex items-center gap-2">
-            <ActionBtn tone="darkgreen" icon="folder">Compile Package</ActionBtn>
-            <ActionBtn tone="outline" icon="send">Send to ZAQA</ActionBtn>
-            <SelectPill label="More Actions" />
-          </div>
+      <div className="rounded-xl border border-slate-200 bg-white px-4 pt-1 shadow-card">
+        <StatusTabs tabs={tabs} active={tab} onChange={setTab} />
+        <div className="mb-4 flex flex-wrap items-center gap-2.5">
+          <SearchBox className="w-full sm:w-72" placeholder="Search graduate, qualification, hash..." value={q} onChange={setQ} />
+        </div>
+        <DataTable
+          rowKey="credentialHash"
+          activeKey={selected?.credentialHash}
+          onRowClick={(r) => { setSel(r.credentialHash); setPanelError(null); }}
+          loading={loading}
+          emptyText="No credentials match this view."
+          columns={columns}
+          rows={pg.rows}
+          footer={<Pagination {...pg.props} className="border-t border-slate-100" />}
+        />
+      </div>
+
+      {/* Issue corrected credential */}
+      <Modal
+        open={!!correctFor}
+        onClose={() => setCorrectFor(null)}
+        title="Issue corrected credential"
+        width="max-w-xl"
+        footer={
+          <>
+            <ActionBtn tone="outline" onClick={() => setCorrectFor(null)}>Cancel</ActionBtn>
+            <ActionBtn
+              tone="orange"
+              icon="edit"
+              disabled={busy || !form.subjectName?.trim() || !form.qualification?.trim() || !form.graduationYear}
+              onClick={submitCorrect}
+            >
+              {busy ? "Issuing…" : "Issue corrected credential"}
+            </ActionBtn>
+          </>
         }
       >
-        <div className="flex flex-wrap items-center gap-2.5 px-4 py-3">
-          <SearchBox
-            className="w-96"
-            placeholder="Search by programme name, qualification, status..."
-            value={q}
-            onChange={setQ}
-          />
-          <SelectPill label="Status: All" />
-          <SelectPill label="Evidence Type: All" />
-          <SelectPill label="Date Range" />
-          <ToolButton icon="filter">Filter</ToolButton>
-          <ToolButton icon="download">Export</ToolButton>
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-800">
+          The current credential will be <span className="font-bold">revoked on-chain as an administrative error</span>{" "}
+          and replaced by a new credential with the corrected details below. The two records stay linked, the graduate
+          is notified, and any open correction request is resolved. A previously validated credential will require
+          ZAQA revalidation.
         </div>
-        {error && <p className="px-4 pb-2 text-[12px] font-medium text-red-600">{error}</p>}
-        {rows.length ? (
-          <DataTable
-            rowKey="id"
-            activeKey={selected?.id}
-            onRowClick={(r) => setSel(r.id)}
-            columns={[
-              { key: "check", label: "", thClass: "w-8", render: () => <input type="checkbox" className="rounded border-slate-300" onClick={(e) => e.stopPropagation()} readOnly /> },
-              {
-                key: "id",
-                label: "Package ID",
-                render: (r) => (
-                  <span className="block leading-tight">
-                    <span className="block font-semibold text-blue-600">{String(r.id).slice(-10).toUpperCase()}</span>
-                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">ACCREDITATION</span>
-                  </span>
-                ),
-              },
-              { key: "name", label: "Learner / Programme" },
-              { key: "qualification", label: "Qualification", render: (r) => r.qualificationRef || r.name },
-              { key: "evidenceType", label: "Evidence Type", render: () => "Programme Accreditation" },
-              {
-                key: "completeness",
-                label: "Completeness",
-                render: (r) => {
-                  const v = (STATUS_META[r.status] || STATUS_META.draft).completeness;
-                  return (
-                    <span className="flex items-center gap-2">
-                      <ProgressBar value={v} className="w-20" />
-                      <span className="text-[12px] font-semibold text-slate-700">{v}%</span>
-                    </span>
-                  );
-                },
-              },
-              {
-                key: "status",
-                label: "ZAQA Status",
-                render: (r) => {
-                  const m = STATUS_META[r.status] || STATUS_META.draft;
-                  return <Badge tone={m.tone}>{m.label}</Badge>;
-                },
-              },
-              { key: "officer", label: "Assigned Officer", render: () => officer },
-              { key: "updated", label: "Last Updated", tdClass: "whitespace-nowrap", render: (r) => fmtDateTime(r.createdAt) },
-              { key: "menu", label: "", render: () => <Icon name="dots" className="h-4 w-4 text-slate-400" /> },
-            ]}
-            rows={rows}
-          />
-        ) : (
-          <div className="border-t border-slate-100 px-4 py-10 text-center text-[13px] text-slate-400">No records yet.</div>
-        )}
-        <div className="flex items-center border-t border-slate-100">
-          <Pagination
-            className="flex-1"
-            summary={`Showing ${rows.length ? 1 : 0} to ${rows.length} of ${programmes.length} packages`}
-            page={1}
-            pages={1}
-          />
-          <SelectPill label="10 / page" className="mr-3.5" />
+        <div className="space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-[12px] font-semibold text-slate-700">Graduate name *</span>
+            <input
+              value={form.subjectName || ""}
+              onChange={set("subjectName")}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[12px] font-semibold text-slate-700">Qualification *</span>
+            <input
+              value={form.qualification || ""}
+              onChange={set("qualification")}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <label className="block">
+              <span className="mb-1 block text-[12px] font-semibold text-slate-700">Graduation year *</span>
+              <input
+                type="number"
+                min="1960"
+                max="2100"
+                value={form.graduationYear || ""}
+                onChange={set("graduationYear")}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[12px] font-semibold text-slate-700">ZQF level</span>
+              <select
+                value={form.zqfLevel || ""}
+                onChange={set("zqfLevel")}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="">Not set</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((l) => (
+                  <option key={l} value={l}>Level {l}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[12px] font-semibold text-slate-700">Credential type</span>
+              <select
+                value={form.credentialType || "other"}
+                onChange={set("credentialType")}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              >
+                {TYPE_OPTIONS.map((t) => (
+                  <option key={t} value={t}>{TYPE_LABEL[t]}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {correctFor?.correctionRequest?.status === "open" && (
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
+              <span className="font-semibold">Graduate&apos;s request:</span> {correctFor.correctionRequest.message}
+            </div>
+          )}
         </div>
-      </SectionCard>
+      </Modal>
     </PortalShell>
   );
 }

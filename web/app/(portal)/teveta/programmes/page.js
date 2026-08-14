@@ -2,67 +2,77 @@
 
 import { useCallback, useEffect, useState } from "react";
 import PortalShell from "../../../../components/portal/shell";
-import Icon from "../../../../components/portal/icons";
 import {
-  Badge, Avatar, StatCard, StatRow, TabBar, SearchBox, SelectPill,
-  ToolButton, DataTable, Pagination, KVGrid, KVRow, CheckItem, ActionBtn,
+  Badge, Avatar, StatCard, StatRow, SectionCard, SearchBox, SelectPill,
+  ToolButton, DataTable, Pagination, usePager, KVGrid, ActionBtn,
+  PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
-import { Donut, CHART } from "../../../../components/portal/charts";
+import CaseTimeline from "../../../../components/portal/CaseTimeline";
 import { api, openBlob } from "../../../../lib/api";
 import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 
 const STATUS_TONES = { approved: "green", pending: "amber", suspended: "red" };
 const STATUS_LABELS = { approved: "Approved", pending: "Pending Review", suspended: "Suspended" };
 
-const COMPLIANCE_ROWS = [
-  ["Governance & Management", "90%"],
-  ["Infrastructure & Facilities", "85%"],
-  ["Training Delivery", "88%"],
-  ["Assessment & QA", "83%"],
-  ["Student Support Services", "84%"],
-];
-
-function shortId(id) {
-  return String(id || "").slice(-8).toUpperCase();
-}
-function shortAddr(a) {
-  return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—";
-}
-
-function PanelCard({ title, chip, children, className = "" }) {
+function ProgrammePanel({ prog, busy, onClose, onApprove, onReject }) {
   return (
-    <div className={`rounded-xl border border-slate-200 p-3.5 ${className}`}>
-      {title && (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[12.5px] font-semibold text-slate-800">{title}</span>
-          {chip}
-        </div>
-      )}
-      {children}
+    <div>
+      <PanelHeader
+        title="Programme Application"
+        badge={<Badge tone="amber">Pending</Badge>}
+        onClose={onClose}
+      />
+      <div className="mb-4 rounded-xl border border-slate-200 p-3.5">
+        <KVGrid
+          cols={2}
+          items={[
+            { label: "Programme", value: prog.name },
+            { label: "Institution", value: prog.institution || "—" },
+            { label: "NQF Level", value: prog.zqfLevel != null ? `Level ${prog.zqfLevel}` : "—" },
+            { label: "Qualification Ref", value: prog.qualificationRef || "—" },
+            { label: "Submitted", value: fmtDate(prog.createdAt) },
+            { label: "Status", value: <Badge tone="amber">Pending accreditation</Badge> },
+          ]}
+        />
+        {prog.note ? (
+          <div className="mt-3 border-t border-slate-100 pt-2.5">
+            <div className="text-[11px] font-medium text-slate-400">Note</div>
+            <div className="mt-0.5 text-[12.5px] text-slate-700">{prog.note}</div>
+          </div>
+        ) : null}
+      </div>
+
+      <SectionCard title="Case History" className="mb-4" pad="p-4">
+        <CaseTimeline events={prog.events} />
+      </SectionCard>
+
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <ActionBtn tone="green" icon="check" full disabled={busy === prog.id} onClick={() => onApprove(prog.id)}>
+          {busy === prog.id ? "Working…" : "Accredit Programme"}
+        </ActionBtn>
+        <ActionBtn tone="softred" icon="x" full disabled={busy === prog.id} onClick={() => onReject(prog.id)}>
+          Reject
+        </ActionBtn>
+      </div>
     </div>
   );
 }
 
-function DetailPanel({ inst, tab, setTab, busy, onApprove, onReject, onViewDoc }) {
+function ProviderPanel({ inst, busy, onClose, onApprove, onReject, onViewDoc }) {
+  const status = inst.heaStatus || "approved";
   const programmes = inst.accreditedPrograms || [];
   return (
     <div>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <h2 className="text-[15px] font-bold text-slate-900">Provider Details</h2>
-        <button className="text-slate-400 hover:text-slate-600" aria-label="Close">
-          <Icon name="x" className="h-[18px] w-[18px]" />
-        </button>
-      </div>
+      <PanelHeader
+        title="Provider Details"
+        badge={<Badge tone={STATUS_TONES[status] || "slate"}>{STATUS_LABELS[status] || status}</Badge>}
+        onClose={onClose}
+      />
 
       <div className="mb-3 flex items-start gap-3">
         <Avatar name={inst.institution} size="h-10 w-10" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13.5px] font-bold text-slate-900">{inst.institution}</span>
-            <Badge tone={STATUS_TONES[inst.heaStatus] || "slate"}>
-              {STATUS_LABELS[inst.heaStatus] || inst.heaStatus}
-            </Badge>
-          </div>
+          <div className="text-[13.5px] font-bold text-slate-900">{inst.institution}</div>
           <div className="mt-0.5 text-[11.5px] text-slate-500">
             TEVET provider · {inst.selfRegistered ? "Self-registered" : "Registered by TEVETA"}
           </div>
@@ -73,141 +83,98 @@ function DetailPanel({ inst, tab, setTab, busy, onApprove, onReject, onViewDoc }
         <KVGrid
           cols={2}
           items={[
-            { label: "Provider ID", value: shortId(inst.id) },
-            { label: "Sector", value: "TEVET" },
-            { label: "Wallet Address", value: shortAddr(inst.walletAddress) },
+            { label: "Submitted Date", value: fmtDate(inst.createdAt) },
+            { label: "Approved By", value: inst.approvedBy || "—" },
             {
               label: "On-chain",
               value: inst.onChain ? <Badge tone="green">Authorised</Badge> : <Badge tone="amber">Pending</Badge>,
             },
-            { label: "Submitted Date", value: fmtDate(inst.createdAt) },
-            { label: "Approved By", value: inst.approvedBy || "—" },
+            { label: "ZAQA Trusted", value: inst.zaqaTrusted ? "Yes" : "No" },
           ]}
         />
-      </div>
-
-      <div className="mb-4">
-        <TabBar
-          tabs={[
-            "Overview",
-            { label: "Documents", count: inst.hasAccreditationDoc ? 1 : 0 },
-            "Site Visit",
-            "History",
-            "Notes",
-          ]}
-          active={tab}
-          onChange={setTab}
-          accent="border-orange-500 text-orange-600"
-        />
-      </div>
-
-      <div className="mb-3 grid grid-cols-2 gap-2.5">
-        <PanelCard title="Accredited Programmes" chip={<Badge tone="orange">{programmes.length}</Badge>}>
-          {programmes.length > 0 ? (
-            programmes.slice(0, 6).map((p) => <CheckItem key={p} label={p} />)
-          ) : (
-            <p className="text-[11.5px] leading-relaxed text-slate-500">
-              No accredited programmes recorded yet.
-            </p>
-          )}
-          {programmes.length > 6 && (
-            <div className="mt-1 text-[11px] text-slate-400">+{programmes.length - 6} more</div>
-          )}
-        </PanelCard>
-        <PanelCard title="Regulator Notes">
-          <p className="text-[11.5px] leading-relaxed text-slate-600">
-            {inst.heaNote || "No regulator notes recorded for this provider."}
-          </p>
-        </PanelCard>
-      </div>
-
-      <div className="mb-4 grid grid-cols-2 gap-2.5">
-        <PanelCard title="Site Visit Status" chip={<Badge tone="amber">Scheduled</Badge>}>
-          <KVRow label="Date" value="May 24, 2025" />
-          <KVRow label="Lead Inspector" value="Mwansa Chileshe" />
-          <button className="mt-2 block text-[11px] font-semibold text-blue-600">View Site Visit Plan</button>
-        </PanelCard>
-        <PanelCard title="Compliance Score">
-          <div className="mb-2 flex justify-center">
-            <Donut
-              size={92}
-              thickness={12}
-              centerTitle="86%"
-              centerSub="Compliant"
-              segments={[
-                { value: 86, color: CHART.green, label: "Compliant" },
-                { value: 14, color: "#e2e8f0", label: "Gap" },
-              ]}
-            />
+        {inst.heaNote ? (
+          <div className="mt-3 border-t border-slate-100 pt-2.5">
+            <div className="text-[11px] font-medium text-slate-400">Regulator Note</div>
+            <div className="mt-0.5 text-[12.5px] text-slate-700">{inst.heaNote}</div>
           </div>
-          <div className="space-y-0.5">
-            {COMPLIANCE_ROWS.map(([label, value]) => (
-              <div key={label} className="flex items-baseline justify-between gap-2 text-[11px]">
-                <span className="min-w-0 truncate text-slate-500">{label}</span>
-                <span className="shrink-0 font-semibold text-slate-800">{value}</span>
-              </div>
+        ) : null}
+      </div>
+
+      <SectionCard
+        title="Accredited Programmes"
+        action={<Badge tone="orange">{programmes.length}</Badge>}
+        className="mb-4"
+        pad="p-3.5"
+      >
+        {programmes.length === 0 ? (
+          <p className="text-[11.5px] leading-relaxed text-slate-500">No accredited programmes recorded yet.</p>
+        ) : (
+          <ul className="space-y-1">
+            {programmes.map((p) => (
+              <li key={p} className="flex items-start gap-2 text-[12.5px] text-slate-700">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                {p}
+              </li>
             ))}
-          </div>
-        </PanelCard>
-      </div>
+          </ul>
+        )}
+      </SectionCard>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        <ActionBtn
-          tone="green"
-          icon="check"
-          full
-          className="disabled:opacity-50"
-          disabled={busy === inst.id}
-          onClick={() => onApprove(inst.id)}
-        >
-          {busy === inst.id ? "Approving…" : "Recommend Approval"}
-        </ActionBtn>
-        <ActionBtn
-          tone="outline"
-          icon="fileText"
-          full
-          className="disabled:opacity-50"
-          disabled={!inst.hasAccreditationDoc}
-          onClick={() => onViewDoc(inst.id)}
-        >
-          View Accreditation Doc
-        </ActionBtn>
-        <ActionBtn tone="softpurple" icon="calendar" full>Schedule Site Visit</ActionBtn>
-        <ActionBtn tone="softorange" full>Return Application</ActionBtn>
-        <ActionBtn
-          tone="red"
-          icon="x"
-          full
-          className="col-span-2 disabled:opacity-50"
-          disabled={busy === inst.id}
-          onClick={() => onReject(inst.id)}
-        >
-          Reject Application
-        </ActionBtn>
+      <SectionCard title="Case History" className="mb-4" pad="p-4">
+        <CaseTimeline events={inst.events} />
+      </SectionCard>
+
+      <div className="space-y-2.5">
+        {inst.hasAccreditationDoc && (
+          <ActionBtn tone="outline" icon="fileText" full onClick={() => onViewDoc(inst.id)}>
+            View Accreditation Document
+          </ActionBtn>
+        )}
+        {status === "pending" && (
+          <>
+            <ActionBtn tone="green" icon="check" full disabled={busy === inst.id} onClick={() => onApprove(inst.id)}>
+              {busy === inst.id ? "Working…" : "Approve Provider"}
+            </ActionBtn>
+            <ActionBtn tone="softred" icon="x" full disabled={busy === inst.id} onClick={() => onReject(inst.id)}>
+              Reject Application
+            </ActionBtn>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 export default function TevetaProgrammesPage() {
-  const { ready, user, token } = usePortalGuard(["teveta"]);
+  const { ready, token } = usePortalGuard(["teveta"]);
   const [insts, setInsts] = useState([]);
+  const [progs, setProgs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState(null);
-  const [panelTab, setPanelTab] = useState("Overview");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sel, setSel] = useState(null); // { type: "programme" | "provider", id }
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const [all, pend] = await Promise.all([api.tevetaInstitutions(token), api.tevetaPending(token)]);
+      const [all, pend, pp] = await Promise.all([
+        api.tevetaInstitutions(token),
+        api.tevetaPending(token),
+        api.pendingProgrammes(token),
+      ]);
       const byId = new Map();
       for (const i of [...(pend.pending || []), ...(all.institutions || [])]) {
         if (!byId.has(String(i.id))) byId.set(String(i.id), i);
       }
       setInsts([...byId.values()]);
+      setProgs(pp.programmes || []);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }, [token]);
 
@@ -215,60 +182,77 @@ export default function TevetaProgrammesPage() {
     if (ready) load();
   }, [ready, load]);
 
-  async function approve(id) {
+  async function approveProgramme(id) {
+    setBusy(id);
+    setError(null);
+    try { await api.approveProgramme(token, id); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
+
+  async function rejectProgramme(id) {
+    const reason = prompt("Reason for rejecting this programme (optional):");
+    if (reason === null) return;
+    setBusy(id);
+    setError(null);
+    try { await api.rejectProgramme(token, id, reason); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
+
+  async function approveProvider(id) {
     setBusy(id);
     setError(null);
     try {
       const r = await api.tevetaApprove(token, id);
       if (r.warning) setError(r.warning);
       await load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(null);
-    }
+    } catch (err) { setError(err.message); }
+    finally { setBusy(null); }
   }
 
-  async function reject(id) {
+  async function rejectProvider(id) {
     const reason = prompt("Reason for rejection (optional):");
     if (reason === null) return;
     setBusy(id);
     setError(null);
-    try {
-      await api.tevetaReject(token, id, reason);
-      await load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(null);
-    }
+    try { await api.tevetaReject(token, id, reason); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
   }
 
   async function viewDoc(id) {
-    try {
-      openBlob(await api.accreditationDoc(token, "teveta", id));
-    } catch (err) {
-      setError(err.message);
-    }
+    try { openBlob(await api.accreditationDoc(token, "teveta", id)); }
+    catch (err) { setError(err.message); }
   }
 
-  const rows = insts.filter(
-    (r) =>
+  const providerRows = insts.filter((r) => {
+    if (statusFilter && (r.heaStatus || "approved") !== statusFilter) return false;
+    return (
       !q ||
-      `${r.institution || ""} ${r.heaStatus || ""} ${(r.accreditedPrograms || []).join(" ")}`
-        .toLowerCase()
-        .includes(q.toLowerCase())
-  );
-  const selected = rows.find((r) => String(r.id) === sel) || rows[0] || null;
+      `${r.institution || ""} ${(r.accreditedPrograms || []).join(" ")}`.toLowerCase().includes(q.toLowerCase())
+    );
+  });
+  const pg = usePager(providerRows, 10, [q, statusFilter]);
+
+  const selectedProg = sel?.type === "programme" ? progs.find((p) => String(p.id) === sel.id) || null : null;
+  const selectedInst = sel?.type === "provider" ? insts.find((i) => String(i.id) === sel.id) || null : null;
 
   const counts = {
-    total: insts.length,
     pending: insts.filter((i) => i.heaStatus === "pending").length,
     approved: insts.filter((i) => i.heaStatus === "approved").length,
     suspended: insts.filter((i) => i.heaStatus === "suspended").length,
     onChain: insts.filter((i) => i.onChain).length,
-    selfReg: insts.filter((i) => i.selfRegistered).length,
   };
+
+  const csvCols = [
+    { key: "institution", label: "Provider" },
+    { key: "programmes", label: "Accredited Programmes", csv: (r) => (r.accreditedPrograms || []).join("; ") },
+    { key: "status", label: "Status", csv: (r) => STATUS_LABELS[r.heaStatus] || r.heaStatus || "approved" },
+    { key: "origin", label: "Origin", csv: (r) => (r.selfRegistered ? "Self-registered" : "TEVETA-registered") },
+    { key: "onChain", label: "On-chain", csv: (r) => (r.onChain ? "Authorised" : "Pending") },
+    { key: "createdAt", label: "Submitted", csv: (r) => fmtDate(r.createdAt) },
+  ];
 
   if (!ready) return null;
 
@@ -276,68 +260,121 @@ export default function TevetaProgrammesPage() {
     <PortalShell
       portal="teveta"
       active="programmes"
-      user={{ name: user.name || user.email, sub: user.email }}
       title="TEVETA Portal – Programme Accreditation"
-      subtitle="Review and manage accreditation of TVET providers and their programmes."
-      actions={
-        <>
-          <ActionBtn tone="orange" icon="plus">New Programme Application</ActionBtn>
-          <SelectPill label="All Time" />
-        </>
-      }
+      subtitle="Accredit programme applications submitted by TEVET providers and manage the provider registry."
       panel={
-        selected ? (
-          <DetailPanel
-            inst={selected}
-            tab={panelTab}
-            setTab={setPanelTab}
+        selectedProg ? (
+          <ProgrammePanel
+            prog={selectedProg}
             busy={busy}
-            onApprove={approve}
-            onReject={reject}
+            onClose={() => setSel(null)}
+            onApprove={approveProgramme}
+            onReject={rejectProgramme}
+          />
+        ) : selectedInst ? (
+          <ProviderPanel
+            inst={selectedInst}
+            busy={busy}
+            onClose={() => setSel(null)}
+            onApprove={approveProvider}
+            onReject={rejectProvider}
             onViewDoc={viewDoc}
           />
         ) : null
       }
+      panelKey={sel ? `${sel.type}-${sel.id}` : null}
       panelWidth="w-[420px]"
     >
-      <StatRow cols={6}>
-        <StatCard icon="fileText" iconTone="softblue" label="Registered Providers" value={counts.total} sub="TEVET institution registry" />
-        <StatCard icon="clock" iconTone="amber" label="Pending Approval" value={counts.pending} sub="Awaiting TEVETA decision" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="Approved Providers" value={counts.approved} sub="Accredited to issue" />
-        <StatCard icon="pause" iconTone="softred" label="Suspended" value={counts.suspended} sub="Issuance suspended" />
-        <StatCard icon="shieldCheck" iconTone="purple" label="On-chain Authorised" value={counts.onChain} sub="GovernanceSafe authorised" />
-        <StatCard icon="inbox" iconTone="orange" label="Self-Registered" value={counts.selfReg} sub="Applied via public portal" />
+      <StatRow cols={5}>
+        <StatCard icon="clipboard" iconTone="orange" label="Programme Applications" value={String(progs.length)} sub="Awaiting accreditation" />
+        <StatCard icon="bank" iconTone="softblue" label="Registered Providers" value={String(insts.length)} sub="TEVET institution registry" />
+        <StatCard icon="clock" iconTone="amber" label="Providers Pending" value={String(counts.pending)} sub="Awaiting TEVETA decision" />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="Approved Providers" value={String(counts.approved)} sub="Accredited to issue" />
+        <StatCard icon="shieldCheck" iconTone="purple" label="On-chain Authorised" value={String(counts.onChain)} sub="GovernanceSafe authorised" />
       </StatRow>
+
+      <ErrorBanner error={error} onRetry={load} />
+
+      <SectionCard
+        title="Pending Programme Applications"
+        className="mb-5"
+        action={<Badge tone={progs.length ? "amber" : "slate"}>{progs.length} awaiting review</Badge>}
+        pad="p-0"
+      >
+        <DataTable
+          rowKey="id"
+          activeKey={selectedProg?.id}
+          onRowClick={(r) => setSel({ type: "programme", id: String(r.id) })}
+          loading={loading}
+          emptyText="No programme applications awaiting accreditation."
+          columns={[
+            { key: "name", label: "Programme", render: (r) => <span className="font-semibold text-slate-800">{r.name}</span> },
+            { key: "institution", label: "Provider", render: (r) => r.institution || "—" },
+            { key: "zqfLevel", label: "NQF Level", render: (r) => (r.zqfLevel != null ? <Badge tone="blue">Level {r.zqfLevel}</Badge> : "—") },
+            { key: "qualificationRef", label: "Qualification Ref", render: (r) => r.qualificationRef || "—" },
+            { key: "createdAt", label: "Submitted", render: (r) => fmtDate(r.createdAt) },
+            {
+              key: "actions",
+              label: "Actions",
+              render: (r) => (
+                <span className="flex items-center gap-2">
+                  <ActionBtn
+                    tone="green"
+                    icon="check"
+                    className="!px-2.5 !py-1 text-[12px] disabled:opacity-50"
+                    disabled={busy === r.id}
+                    onClick={(e) => { e.stopPropagation(); approveProgramme(r.id); }}
+                  >
+                    {busy === r.id ? "Working…" : "Accredit"}
+                  </ActionBtn>
+                  <ActionBtn
+                    tone="red"
+                    icon="x"
+                    className="!px-2.5 !py-1 text-[12px] disabled:opacity-50"
+                    disabled={busy === r.id}
+                    onClick={(e) => { e.stopPropagation(); rejectProgramme(r.id); }}
+                  >
+                    Reject
+                  </ActionBtn>
+                </span>
+              ),
+            },
+          ]}
+          rows={progs}
+        />
+      </SectionCard>
 
       <div className="rounded-xl border border-slate-200 bg-white px-4 pt-4 shadow-card">
         <div className="mb-4 flex flex-wrap items-center gap-2.5">
-          <SearchBox
-            className="w-80"
-            placeholder="Search by provider, programme, status..."
-            value={q}
-            onChange={setQ}
+          <SearchBox className="w-72" placeholder="Search by provider or programme..." value={q} onChange={setQ} />
+          <SelectPill
+            label="Status"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: "pending", label: "Pending Review" },
+              { value: "approved", label: "Approved" },
+              { value: "suspended", label: "Suspended" },
+            ]}
           />
-          <SelectPill label="All Provinces" />
-          <SelectPill label="All Trade Areas" />
-          <SelectPill label="All Statuses" />
-          <ToolButton icon="filter">Filter</ToolButton>
-          <ToolButton icon="refresh" onClick={load} />
+          <ToolButton icon="download" onClick={() => exportCSV("teveta-programme-accreditation", csvCols, providerRows)}>
+            Export
+          </ToolButton>
+          <ToolButton icon="refresh" className="ml-auto" onClick={load} aria-label="Refresh" />
         </div>
-        {error && <div className="mb-2 text-[12px] font-medium text-red-600">{error}</div>}
         <DataTable
           rowKey="id"
-          activeKey={selected?.id ?? null}
-          onRowClick={(r) => setSel(String(r.id))}
+          activeKey={selectedInst?.id}
+          onRowClick={(r) => setSel({ type: "provider", id: String(r.id) })}
+          loading={loading}
+          emptyText="No providers registered yet."
           columns={[
-            { key: "id", label: "Provider ID", render: (r) => <span className="font-semibold text-blue-600">{shortId(r.id)}</span> },
-            { key: "institution", label: "Provider" },
+            { key: "institution", label: "Provider", render: (r) => <span className="font-semibold text-slate-800">{r.institution}</span> },
             {
               key: "programmes",
               label: "Accredited Programmes",
               render: (r) => (
-                <span className="block max-w-[260px] truncate">
-                  {(r.accreditedPrograms || []).join(", ") || "—"}
-                </span>
+                <span className="block max-w-[260px] truncate">{(r.accreditedPrograms || []).join(", ") || "—"}</span>
               ),
             },
             {
@@ -354,34 +391,18 @@ export default function TevetaProgrammesPage() {
               key: "onChain",
               label: "On-chain",
               render: (r) =>
-                r.onChain ? (
-                  <Badge tone="green" icon="check">Authorised</Badge>
-                ) : (
-                  <Badge tone="amber" icon="clock">Pending</Badge>
-                ),
+                r.onChain ? <Badge tone="green" icon="check">Authorised</Badge> : <Badge tone="amber" icon="clock">Pending</Badge>,
             },
             {
               key: "heaStatus",
               label: "Status",
               render: (r) => (
-                <Badge tone={STATUS_TONES[r.heaStatus] || "slate"}>
-                  {STATUS_LABELS[r.heaStatus] || r.heaStatus}
-                </Badge>
+                <Badge tone={STATUS_TONES[r.heaStatus] || "slate"}>{STATUS_LABELS[r.heaStatus] || r.heaStatus || "Approved"}</Badge>
               ),
             },
-            { key: "action", label: "Action", render: () => <SelectPill label="View" className="!px-2.5 !py-1" /> },
           ]}
-          rows={rows}
-          footer={
-            rows.length === 0 && (
-              <div className="py-8 text-center text-[13px] text-slate-400">No records yet.</div>
-            )
-          }
-        />
-        <Pagination
-          summary={`Showing ${rows.length ? 1 : 0} to ${rows.length} of ${rows.length} providers`}
-          page={1}
-          pages={1}
+          rows={pg.rows}
+          footer={<Pagination {...pg.props} className="border-t border-slate-100" />}
         />
       </div>
     </PortalShell>

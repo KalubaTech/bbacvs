@@ -1,61 +1,55 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import PortalShell from "../../../../components/portal/shell";
-import Icon from "../../../../components/portal/icons";
 import { usePortalGuard, fmtDate, fmtDateTime } from "../../../../components/portal/auth";
 import { api } from "../../../../lib/api";
 import {
   Badge, StatCard, StatRow, SearchBox, ToolButton, DataTable, Pagination,
-  ActionBtn, KVGrid, WorkflowSteps, ProgressBar,
+  usePager, ActionBtn, KVGrid, WorkflowSteps, PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
+
+// The full disputes workspace (review workflow, decisions, appeals) lives at
+// /ecz/disputes — this page is the lighter verification-requests view of the
+// same ECZ-routed queue.
 
 const STATUS_META = {
   open: { label: "Open", tone: "green" },
+  under_review: { label: "Under Review", tone: "amber" },
+  awaiting_evidence: { label: "Awaiting Evidence", tone: "orange" },
+  upheld: { label: "Upheld", tone: "green" },
+  dismissed: { label: "Dismissed", tone: "slate" },
   resolved: { label: "Resolved", tone: "slate" },
+  appealed: { label: "Appealed", tone: "purple" },
 };
 
 const catLabel = (c) => (c ? c.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase()) : "—");
+const isClosed = (s) => ["resolved", "upheld", "dismissed"].includes(s);
 
-function Section({ n, title, action, children }) {
+function Section({ n, title, children }) {
   return (
     <div className="mb-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10.5px] font-bold text-emerald-700">
-            {n}
-          </span>
-          <h3 className="text-[13px] font-semibold text-slate-800">{title}</h3>
-        </div>
-        {action}
+      <div className="mb-2 flex items-center gap-2">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[10.5px] font-bold text-emerald-700">
+          {n}
+        </span>
+        <h3 className="text-[13px] font-semibold text-slate-800">{title}</h3>
       </div>
       <div className="rounded-xl border border-slate-200 p-3.5">{children}</div>
     </div>
   );
 }
 
-function DetailPanel({ req, busy, onResolve }) {
-  if (!req) {
-    return <div className="py-10 text-center text-[13px] text-slate-400">No request selected.</div>;
-  }
+function DetailPanel({ req, busy, onClose, onResolve }) {
   const st = STATUS_META[req.status] || { label: req.status, tone: "slate" };
   return (
     <div>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <h2 className="text-[15px] font-bold text-slate-900">Request Details</h2>
-        <button className="text-slate-400 hover:text-slate-600" aria-label="Close">
-          <Icon name="x" className="h-[18px] w-[18px]" />
-        </button>
-      </div>
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[15px] font-bold text-slate-900">{String(req.id).slice(-10).toUpperCase()}</span>
-          <Badge tone={st.tone} dot>{st.label}</Badge>
-        </div>
-        <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
-          Opened {fmtDate(req.createdAt)}
-        </span>
-      </div>
+      <PanelHeader
+        title={String(req.id).slice(-10).toUpperCase()}
+        badge={<Badge tone={st.tone} dot>{st.label}</Badge>}
+        onClose={onClose}
+      />
 
       <Section n={1} title="Learner Information">
         <KVGrid
@@ -72,9 +66,7 @@ function DetailPanel({ req, busy, onResolve }) {
       <Section n={2} title="Linked Record">
         <KVGrid
           cols={1}
-          items={[
-            { label: "Credential Hash", value: <span className="break-all">{req.credentialHash}</span> },
-          ]}
+          items={[{ label: "Credential Hash", value: <span className="break-all">{req.credentialHash}</span> }]}
         />
       </Section>
 
@@ -104,7 +96,7 @@ function DetailPanel({ req, busy, onResolve }) {
             <div key={i} className="flex items-start justify-between gap-2">
               <div className="min-w-0 leading-tight">
                 <div className="text-[12.5px] font-medium text-slate-700">
-                  {c.action === "opened" ? "Dispute opened" : c.action === "resolved" ? "Dispute resolved" : c.action}
+                  {c.action === "opened" ? "Dispute opened" : c.action === "resolved" ? "Dispute resolved" : catLabel(c.action)}
                   {c.note ? ` — ${c.note}` : ""}
                 </div>
                 <div className="mt-0.5 text-[11px] text-slate-400">{fmtDateTime(c.at)}</div>
@@ -122,45 +114,48 @@ function DetailPanel({ req, busy, onResolve }) {
         <WorkflowSteps
           steps={[
             { label: "Received", sub: fmtDate(req.createdAt), state: "done" },
-            { label: "Under Review", state: req.status === "resolved" ? "done" : "current" },
-            { label: "Resolved", state: req.status === "resolved" ? "done" : "pending" },
+            { label: "Under Review", state: isClosed(req.status) ? "done" : "current" },
+            { label: "Resolved", state: isClosed(req.status) ? "done" : "pending" },
           ]}
         />
       </Section>
 
-      <Section n={6} title="Case Progress">
-        <ProgressBar value={req.status === "resolved" ? 100 : 50} tone={req.status === "resolved" ? "green" : "amber"} />
-      </Section>
-
       <div className="flex flex-wrap gap-2">
-        <ActionBtn tone="darkgreen">Respond</ActionBtn>
-        <ActionBtn tone="outline" icon="upload">Upload Evidence</ActionBtn>
-        <ActionBtn tone="softorange" icon="alert">Escalate</ActionBtn>
-        {req.status !== "resolved" && (
+        {!isClosed(req.status) && (
           <ActionBtn tone="softgreen" icon="check" disabled={busy === req.id} onClick={() => onResolve(req.id)}>
             {busy === req.id ? "Resolving…" : "Resolve"}
           </ActionBtn>
         )}
+        <Link
+          href="/ecz/disputes"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          Open in Disputes Workspace
+        </Link>
       </div>
     </div>
   );
 }
 
 export default function EczRequestsPage() {
-  const { ready, user, token } = usePortalGuard(["ecz"]);
+  const { ready, token } = usePortalGuard(["ecz"]);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
   const [disputes, setDisputes] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.disputeQueue(token);
       setDisputes(res.disputes || []);
-      setError(null);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }, [token]);
 
@@ -172,27 +167,29 @@ export default function EczRequestsPage() {
     const resolution = prompt("Resolution note:");
     if (!resolution) return;
     setBusy(id);
+    setError(null);
     try { await api.resolveDispute(token, id, resolution); await load(); }
     catch (err) { setError(err.message); }
     finally { setBusy(null); }
   }
 
-  if (!ready) return null;
-
   const rows = disputes.filter(
-    (r) => !q ||
+    (r) =>
+      !q ||
       (String(r.id) + (r.subjectName || "") + (r.institution || "") + (r.category || "") + (r.credentialHash || ""))
-        .toLowerCase().includes(q.toLowerCase())
+        .toLowerCase()
+        .includes(q.toLowerCase())
   );
-  const selected = disputes.find((d) => d.id === sel) || rows[0] || disputes[0] || null;
+  const pg = usePager(rows, 10, [q]);
+  const selected = disputes.find((d) => d.id === sel) || null;
 
-  const open = disputes.filter((d) => d.status !== "resolved").length;
-  const resolved = disputes.filter((d) => d.status === "resolved").length;
+  const open = disputes.filter((d) => !isClosed(d.status)).length;
+  const resolved = disputes.length - open;
   const categories = new Set(disputes.map((d) => d.category)).size;
   const turnarounds = disputes
-    .filter((d) => d.status === "resolved")
+    .filter((d) => isClosed(d.status))
     .map((d) => {
-      const done = (d.events || []).find((e) => e.action === "resolved");
+      const done = (d.events || []).find((e) => ["resolved", "decided"].includes(e.action));
       return done ? (new Date(done.at) - new Date(d.createdAt)) / 86400000 : null;
     })
     .filter((v) => v != null);
@@ -200,26 +197,43 @@ export default function EczRequestsPage() {
     ? `${(turnarounds.reduce((s, v) => s + v, 0) / turnarounds.length).toFixed(1)} days`
     : "—";
 
+  const csvCols = [
+    { key: "id", label: "Request ID", csv: (r) => String(r.id) },
+    { key: "subjectName", label: "Learner", csv: (r) => r.subjectName || "" },
+    { key: "credentialHash", label: "Credential Hash" },
+    { key: "institution", label: "Institution", csv: (r) => r.institution || "" },
+    { key: "category", label: "Issue Type", csv: (r) => catLabel(r.category) },
+    { key: "openedBy", label: "Opened By", csv: (r) => r.openedBy || "" },
+    { key: "status", label: "Status", csv: (r) => (STATUS_META[r.status] || { label: r.status }).label },
+    { key: "createdAt", label: "Requested", csv: (r) => fmtDate(r.createdAt) },
+  ];
+
+  if (!ready) return null;
+
   return (
     <PortalShell
       portal="ecz"
       active="requests"
       title="ECZ Portal – ZAQA Verification Requests"
-      subtitle="Manage and respond to verification requests and disputes routed to ECZ through BBACVS."
-      user={{ name: user.name || user.email, sub: user.email }}
-      actions={<ActionBtn tone="outline" icon="download">Export Queue</ActionBtn>}
-      panel={<DetailPanel req={selected} busy={busy} onResolve={onResolve} />}
+      subtitle="Verification requests and corrections routed to ECZ through BBACVS. Full casework lives in Disputes & Corrections."
+      actions={
+        <ToolButton icon="download" onClick={() => exportCSV("ecz-verification-requests", csvCols, rows)}>
+          Export Queue
+        </ToolButton>
+      }
+      panel={selected ? <DetailPanel req={selected} busy={busy} onClose={() => setSel(null)} onResolve={onResolve} /> : null}
+      panelKey={selected?.id}
       panelWidth="w-[400px]"
     >
       <StatRow cols={5}>
-        <StatCard icon="inbox" iconTone="softgreen" label="Open Requests" value={open} sub="Awaiting ECZ action" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="Resolved Cases" value={resolved} sub="Closed with resolution" />
-        <StatCard icon="help" iconTone="amber" label="Total Cases" value={disputes.length} sub="Routed to ECZ" />
-        <StatCard icon="alert" iconTone="softred" label="Issue Categories" value={categories} sub="Distinct dispute types" />
-        <StatCard icon="clock" iconTone="softblue" label="Average Turnaround Time" value={avgDays} sub="Open to resolution" />
+        <StatCard icon="inbox" iconTone="softgreen" label="Open Requests" value={String(open)} sub="Awaiting ECZ action" />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="Closed Cases" value={String(resolved)} sub="Resolved / decided" />
+        <StatCard icon="help" iconTone="amber" label="Total Cases" value={String(disputes.length)} sub="Routed to ECZ" />
+        <StatCard icon="alert" iconTone="softred" label="Issue Categories" value={String(categories)} sub="Distinct dispute types" />
+        <StatCard icon="clock" iconTone="softblue" label="Average Turnaround" value={avgDays} sub="Open to resolution" />
       </StatRow>
 
-      {error && <div className="mb-3 text-[13px] font-medium text-red-600">{error}</div>}
+      <ErrorBanner error={error} onRetry={load} />
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-card">
         <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
@@ -227,14 +241,15 @@ export default function EczRequestsPage() {
           <Badge tone="green">{open}</Badge>
         </div>
         <div className="flex flex-wrap items-center gap-2.5 px-4 py-3">
-          <SearchBox className="w-96" placeholder="Search by ID, name, institution, category..." value={q} onChange={setQ} />
-          <ToolButton icon="filter">Filter</ToolButton>
-          <ToolButton icon="refresh" onClick={load}>Refresh</ToolButton>
+          <SearchBox className="w-full sm:w-96" placeholder="Search by ID, name, institution, category..." value={q} onChange={setQ} />
+          <ToolButton icon="refresh" className="ml-auto" onClick={load}>Refresh</ToolButton>
         </div>
         <DataTable
           rowKey="id"
           activeKey={selected?.id}
           onRowClick={(r) => setSel(r.id)}
+          loading={loading}
+          emptyText="No verification requests yet."
           columns={[
             {
               key: "id", label: "Request ID",
@@ -263,7 +278,7 @@ export default function EczRequestsPage() {
             {
               key: "resolve", label: "Action",
               render: (r) =>
-                r.status !== "resolved" ? (
+                !isClosed(r.status) ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); onResolve(r.id); }}
                     disabled={busy === r.id}
@@ -276,14 +291,9 @@ export default function EczRequestsPage() {
                 ),
             },
           ]}
-          rows={rows}
-          footer={
-            rows.length === 0 ? (
-              <div className="px-4 py-8 text-center text-[13px] text-slate-400">No records yet.</div>
-            ) : null
-          }
+          rows={pg.rows}
+          footer={<Pagination {...pg.props} className="border-t border-slate-100" />}
         />
-        <Pagination summary={`Showing ${rows.length} of ${disputes.length} requests`} page={1} pages={1} />
       </div>
     </PortalShell>
   );

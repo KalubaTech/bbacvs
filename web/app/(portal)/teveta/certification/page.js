@@ -1,160 +1,173 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import PortalShell from "../../../../components/portal/shell";
-import Icon from "../../../../components/portal/icons";
 import {
-  Badge, Avatar, StatCard, StatRow, TabBar, SearchBox, SelectPill, ToolButton,
-  DataTable, Pagination, KVGrid, Timeline, CheckItem, ActionBtn,
+  Badge, StatCard, StatRow, SectionCard, StatusTabs, SearchBox, ToolButton,
+  DataTable, Pagination, usePager, KVGrid, PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
-import { usePortalGuard } from "../../../../components/portal/auth";
+import CaseTimeline from "../../../../components/portal/CaseTimeline";
+import { api } from "../../../../lib/api";
+import { usePortalGuard, fmtDate, fmtDateTime } from "../../../../components/portal/auth";
 
-const RECORDS = [
-  { cert: "ZMB-TEV-2025-0008562", candidate: "Emmanuel Bwalya", qualification: "Craft Certificate (Level 3)", provider: "Kitwe TTC", trade: "Electrical Installation", issued: "May 14, 2025", status: "Issued", qr: "Ready" },
-  { cert: "ZMB-TEV-2025-0008561", candidate: "Phiri, Margaret", qualification: "Craft Certificate (Level 3)", provider: "Ndola TTC", trade: "Hospitality (Food & Beverage)", issued: "May 13, 2025", status: "Issued", qr: "Ready" },
-  { cert: "ZMB-TEV-2025-0008560", candidate: "Tembo, Peter", qualification: "Craft Certificate (Level 4)", provider: "Lusaka TTC", trade: "Automotive Mechanics", issued: "May 12, 2025", status: "Issued", qr: "Ready" },
-  { cert: "ZMB-TEV-2025-0008559", candidate: "Nkomo, Sydney", qualification: "Craft Certificate (Level 3)", provider: "Mufulira TTC", trade: "Plumbing", issued: "May 11, 2025", status: "Pending", qr: "In Progress" },
-  { cert: "ZMB-TEV-2025-0008558", candidate: "Kabwe, Patricia", qualification: "National Certificate (Level 4)", provider: "Chipata TTC", trade: "ICT Support", issued: "May 10, 2025", status: "Issued", qr: "Ready" },
-  { cert: "ZMB-TEV-2025-0008557", candidate: "Chisanga, Brian", qualification: "Craft Certificate (Level 3)", provider: "Solwezi TTC", trade: "Welding", issued: "May 9, 2025", status: "Issued", qr: "Ready" },
-  { cert: "ZMB-TEV-2025-0008556", candidate: "Sakala, Mary", qualification: "Craft Certificate (Level 3)", provider: "Kitwe TTC", trade: "Electrical Installation", issued: "May 8, 2025", status: "Pending", qr: "In Progress" },
-  { cert: "ZMB-TEV-2025-0008555", candidate: "Mwale, David", qualification: "Craft Certificate (Level 4)", provider: "Ndola TTC", trade: "Automotive Mechanics", issued: "May 7, 2025", status: "Issued", qr: "Ready" },
-  { cert: "ZMB-TEV-2025-0008554", candidate: "Lungu, Christine", qualification: "Craft Certificate (Level 3)", provider: "Mufulira TTC", trade: "Hospitality (Housekeeping)", issued: "May 6, 2025", status: "Pending", qr: "In Progress" },
-  { cert: "ZMB-TEV-2025-0008553", candidate: "Mbewe, Victor", qualification: "National Certificate (Level 4)", provider: "Chipata TTC", trade: "ICT Support", issued: "May 5, 2025", status: "Issued", qr: "Ready" },
-];
+// ZAQA validation state → label / tone.
+const VMETA = {
+  draft: { label: "Draft", tone: "slate" },
+  pending: { label: "Pending", tone: "amber" },
+  validated: { label: "Validated", tone: "green" },
+  rejected: { label: "Rejected", tone: "red" },
+  suspicious: { label: "Flagged", tone: "orange" },
+  suspended: { label: "Suspended", tone: "red" },
+  under_dispute: { label: "Under Dispute", tone: "purple" },
+};
+// Lifecycle status → label / tone.
+const SMETA = {
+  active: { label: "Active", tone: "green" },
+  pending: { label: "Pending", tone: "amber" },
+  suspended: { label: "Suspended", tone: "orange" },
+  revoked: { label: "Revoked", tone: "red" },
+  superseded: { label: "Superseded", tone: "slate" },
+};
 
-const STATUS_TONES = { Issued: "green", Pending: "amber" };
+const shortHash = (h) => (h && h.length > 18 ? `${h.slice(0, 10)}…${h.slice(-6)}` : h || "—");
 
-function displayName(candidate) {
-  return candidate.includes(",")
-    ? candidate.split(",").map((s) => s.trim()).reverse().join(" ")
-    : candidate;
-}
-
-function PanelCard({ title, chip, children, className = "" }) {
-  return (
-    <div className={`rounded-xl border border-slate-200 p-3.5 ${className}`}>
-      {title && (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[12.5px] font-semibold text-slate-800">{title}</span>
-          {chip}
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
-
-function DetailPanel({ rec, tab, setTab }) {
-  const name = displayName(rec.candidate);
+function DetailPanel({ rec, onClose }) {
+  const v = VMETA[rec.zaqaValidation || "draft"] || VMETA.draft;
+  const s = SMETA[rec.status] || { label: rec.status || "—", tone: "slate" };
   return (
     <div>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[15px] font-bold text-slate-900">Certificate Details</h2>
-          <div className="mt-0.5 text-[12px] font-semibold text-slate-500">{rec.cert}</div>
-        </div>
-        <button className="text-slate-400 hover:text-slate-600" aria-label="Close">
-          <Icon name="x" className="h-[18px] w-[18px]" />
-        </button>
+      <PanelHeader title="Certification Record" badge={<Badge tone={s.tone} dot>{s.label}</Badge>} onClose={onClose} />
+
+      <div className="mb-4">
+        <div className="text-[11px] text-slate-400">Credential Hash</div>
+        <div className="break-all text-[12.5px] font-bold text-slate-900">{rec.credentialHash}</div>
       </div>
 
-      <PanelCard title="Candidate Profile" className="mb-3">
-        <div className="flex items-start gap-3">
-          <Avatar name={name} size="h-12 w-12" />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[13.5px] font-bold text-slate-900">{name}</span>
-              <Badge tone="green" dot>Record Active</Badge>
-            </div>
-            <div className="mt-1.5 space-y-1 text-[12px] text-slate-500">
-              <div className="flex items-center gap-1.5"><Icon name="user" className="h-3.5 w-3.5 text-slate-400" /> NRC: 123456/45/1</div>
-              <div className="flex items-center gap-1.5"><Icon name="send" className="h-3.5 w-3.5 text-slate-400" /> +260 97 1234567</div>
-              <div className="flex items-center gap-1.5"><Icon name="inbox" className="h-3.5 w-3.5 text-slate-400" /> emmanuel.bwalya@email.com</div>
-              <div className="flex items-center gap-1.5"><Icon name="map" className="h-3.5 w-3.5 text-slate-400" /> Kitwe, Copperbelt Province</div>
-            </div>
-          </div>
-        </div>
-      </PanelCard>
-
-      <PanelCard title="Qualification Summary" className="mb-3">
+      <div className="mb-4 rounded-xl border border-slate-200 p-3.5">
         <KVGrid
           cols={2}
           items={[
-            { label: "Qualification", value: rec.qualification },
-            { label: "Accreditation No.", value: "ACC/TEV/2023/045" },
-            { label: "Trade Area", value: rec.trade },
-            { label: "Completion Date", value: "May 12, 2025" },
-            { label: "Provider", value: rec.provider },
+            { label: "Learner", value: rec.subjectName || "—" },
+            { label: "Qualification", value: rec.qualification || "—" },
+            { label: "Provider", value: rec.institution || "—" },
+            { label: "NQF Level", value: rec.zqfLevel != null ? `Level ${rec.zqfLevel}` : "—" },
+            { label: "Type", value: rec.credentialType || "—" },
+            { label: "Issued", value: fmtDate(rec.issuedAt) },
+            { label: "Status", value: <Badge tone={s.tone}>{s.label}</Badge> },
+            { label: "ZAQA Validation", value: <Badge tone={v.tone}>{v.label}</Badge> },
           ]}
         />
-      </PanelCard>
-
-      <PanelCard title="Assessment Result Summary" className="mb-3">
-        <KVGrid
-          cols={2}
-          items={[
-            { label: "Overall Result", value: <Badge tone="green">Pass</Badge> },
-            { label: "Total Marks", value: "82%" },
-            { label: "Assessment Date", value: "May 12, 2025" },
-            { label: "Assessment Type", value: "Practical & Theory" },
-          ]}
-        />
-        <button className="mt-2 text-[11px] font-semibold text-blue-600">View Assessment Details</button>
-      </PanelCard>
-
-      <PanelCard title="Issuance, Replacement & Verification" className="mb-3">
-        <div className="mb-3">
-          <TabBar
-            tabs={["Issuance History", "Replacement History", "Verification Status"]}
-            active={tab}
-            onChange={setTab}
-            accent="border-orange-500 text-orange-600"
-          />
-        </div>
-        <Timeline
-          items={[
-            { title: "Certificate Issued", sub: "Chanda Mwila (BBACVS Officer)", time: "May 14, 2025 10:32 AM", state: "done" },
-            { title: "Record Approved", sub: "Grace Mulenga (QA Manager)", time: "May 13, 2025 02:15 PM", state: "done" },
-            { title: "Assessment Completed", sub: "Assessor: Henry Zulu", time: "May 12, 2025 11:05 AM", state: "done" },
-          ]}
-        />
-      </PanelCard>
-
-      <div className="mb-4 grid grid-cols-2 gap-2.5">
-        <PanelCard title="Certificate Preview">
-          <div className="mb-2 flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50">
-            <Icon name="qr" className="h-8 w-8 text-slate-400" />
+        {rec.zaqaRef ? (
+          <div className="mt-3 border-t border-slate-100 pt-2.5">
+            <div className="text-[11px] font-medium text-slate-400">ZAQA Reference</div>
+            <div className="mt-0.5 text-[12.5px] font-semibold text-slate-800">{rec.zaqaRef}</div>
           </div>
-          <button className="text-[11px] font-semibold text-blue-600">Download Certificate (PDF)</button>
-        </PanelCard>
-        <PanelCard title="Verification Readiness">
-          <CheckItem state="ok" label="QR Code Generated" />
-          <CheckItem state="ok" label="Record Complete" />
-          <CheckItem state="ok" label="Assessments Verified" />
-          <CheckItem state="ok" label="Ready for Verification" />
-        </PanelCard>
+        ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        <ActionBtn tone="green" icon="check" full>Issue Certificate</ActionBtn>
-        <ActionBtn tone="blue" icon="print" full>Reprint Certificate</ActionBtn>
-        <ActionBtn tone="orange" icon="refresh" full>Request Replacement</ActionBtn>
-        <ActionBtn tone="softorange" icon="pause" full>Suspend Record</ActionBtn>
-        <ActionBtn tone="outline" full className="col-span-2">View Verification Log</ActionBtn>
-      </div>
+      {rec.suspension && (rec.suspension.reason || rec.suspension.at || rec.suspension.active) ? (
+        <SectionCard title="Suspension" className="mb-4" pad="p-3.5">
+          <div className="flex items-center gap-2">
+            <Badge tone={rec.suspension.active ? "orange" : "slate"}>
+              {rec.suspension.active ? "Currently suspended" : "Previously suspended"}
+            </Badge>
+          </div>
+          {rec.suspension.reason && (
+            <p className="mt-2 text-[12.5px] leading-relaxed text-slate-600">{rec.suspension.reason}</p>
+          )}
+          {rec.suspension.at && (
+            <div className="mt-1 text-[11px] text-slate-400">{fmtDateTime(rec.suspension.at)}</div>
+          )}
+        </SectionCard>
+      ) : null}
+
+      {rec.supersededBy ? (
+        <SectionCard title="Superseded" className="mb-4" pad="p-3.5">
+          <p className="text-[12.5px] leading-relaxed text-slate-600">
+            This record has been replaced by a corrected credential.
+          </p>
+          <div className="mt-1.5 break-all text-[11.5px] font-mono text-slate-500">{rec.supersededBy}</div>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard title="Case History" pad="p-4">
+        <CaseTimeline events={rec.events} />
+      </SectionCard>
     </div>
   );
 }
 
 export default function TevetaCertificationPage() {
-  const { ready, user } = usePortalGuard(["teveta"]);
+  const { ready, token } = usePortalGuard(["teveta"]);
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState(RECORDS[0].cert);
-  const [panelTab, setPanelTab] = useState("Issuance History");
-  const rows = RECORDS.filter(
-    (r) => !q || (r.cert + r.candidate + r.qualification + r.provider + r.trade).toLowerCase().includes(q.toLowerCase())
+  const [tab, setTab] = useState("All");
+  const [sel, setSel] = useState(null);
+  const [creds, setCreds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await api.tevetaCredentials(token);
+      setCreds(r.credentials || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (ready) load();
+  }, [ready, load]);
+
+  const counts = useMemo(() => {
+    const c = { All: creds.length };
+    for (const k of Object.keys(VMETA)) c[VMETA[k].label] = 0;
+    for (const item of creds) {
+      const l = (VMETA[item.zaqaValidation || "draft"] || VMETA.draft).label;
+      c[l] = (c[l] || 0) + 1;
+    }
+    return c;
+  }, [creds]);
+
+  const rows = creds.filter((r) => {
+    const l = (VMETA[r.zaqaValidation || "draft"] || VMETA.draft).label;
+    if (tab !== "All" && l !== tab) return false;
+    return (
+      !q ||
+      `${r.credentialHash || ""} ${r.subjectName || ""} ${r.qualification || ""} ${r.institution || ""}`
+        .toLowerCase()
+        .includes(q.toLowerCase())
+    );
+  });
+  const pg = usePager(rows, 10, [q, tab]);
+  const selected = creds.find((c) => c.credentialHash === sel) || null;
+
+  const tabs = [{ label: "All", count: counts.All }].concat(
+    Object.values(VMETA)
+      .map((m) => ({ label: m.label, count: counts[m.label] || 0 }))
+      .filter((t) => t.count > 0)
   );
-  const selected = RECORDS.find((r) => r.cert === sel) || RECORDS[0];
+
+  const csvCols = [
+    { key: "credentialHash", label: "Credential Hash" },
+    { key: "subjectName", label: "Learner" },
+    { key: "qualification", label: "Qualification" },
+    { key: "institution", label: "Provider" },
+    { key: "zqfLevel", label: "NQF Level" },
+    { key: "status", label: "Status", csv: (r) => SMETA[r.status]?.label || r.status || "" },
+    { key: "zaqaValidation", label: "ZAQA Validation", csv: (r) => (VMETA[r.zaqaValidation || "draft"] || VMETA.draft).label },
+    { key: "zaqaRef", label: "ZAQA Ref" },
+    { key: "issuedAt", label: "Issued", csv: (r) => fmtDate(r.issuedAt) },
+  ];
+
+  const active = creds.filter((c) => c.status === "active").length;
+  const validated = creds.filter((c) => c.zaqaValidation === "validated").length;
+  const revoked = creds.filter((c) => c.status === "revoked").length;
+  const flagged = creds.filter((c) => ["suspicious", "under_dispute", "suspended"].includes(c.zaqaValidation)).length;
 
   if (!ready) return null;
 
@@ -162,86 +175,79 @@ export default function TevetaCertificationPage() {
     <PortalShell
       portal="teveta"
       active="certification"
-      user={{ name: user.name || user.email, sub: user.email }}
-      title={
-        <span className="flex items-center gap-2">
-          TEVETA Portal – Certification Records
-          <Badge tone="slate">Sample data</Badge>
-        </span>
-      }
-      subtitle="Manage trainee certification records, issuance history, replacements, and verification readiness."
+      title="TEVETA Portal – Certification Records"
+      subtitle="Sector-wide register of TEVET credentials issued by accredited providers. TEVETA monitors — issuance stays with the providers."
       actions={
-        <>
-          <ActionBtn tone="navy" icon="plus">
-            New Certificate Record <Icon name="chevronDown" className="h-3.5 w-3.5" />
-          </ActionBtn>
-          <ActionBtn tone="outline" icon="download">Export Records</ActionBtn>
-        </>
+        <ToolButton icon="download" onClick={() => exportCSV("tevet-certification-records", csvCols, rows)}>
+          Export Records
+        </ToolButton>
       }
-      panel={<DetailPanel rec={selected} tab={panelTab} setTab={setPanelTab} />}
+      panel={selected ? <DetailPanel rec={selected} onClose={() => setSel(null)} /> : null}
+      panelKey={selected?.credentialHash}
       panelWidth="w-[400px]"
     >
       <StatRow cols={5}>
-        <StatCard icon="file" iconTone="softgreen" label="Certificates Issued" value="8,562" delta="11.4%" deltaUp deltaText="vs last 30 days" />
-        <StatCard icon="clock" iconTone="amber" label="Pending Issuance" value="236" delta="8.7%" deltaUp deltaText="vs last 30 days" />
-        <StatCard icon="refresh" iconTone="softblue" label="Replacements Requested" value="78" delta="5.2%" deltaUp={false} deltaText="vs last 30 days" />
-        <StatCard icon="revoke" iconTone="softred" label="Revoked Records" value="24" delta="2.1%" deltaUp deltaText="vs last 30 days" />
-        <StatCard icon="shieldCheck" iconTone="purple" label="Verifications Completed" value="1,354" delta="16.8%" deltaUp deltaText="vs last 30 days" />
+        <StatCard icon="file" iconTone="softblue" label="Total Records" value={String(creds.length)} sub="Latest 200 shown" />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="Active" value={String(active)} sub="Lifecycle status: active" />
+        <StatCard icon="shieldCheck" iconTone="purple" label="ZAQA Validated" value={String(validated)} sub="Nationally validated" />
+        <StatCard icon="alert" iconTone="amber" label="Flagged / Disputed" value={String(flagged)} sub="Needs regulator attention" />
+        <StatCard icon="revoke" iconTone="softred" label="Revoked" value={String(revoked)} sub="On-chain revocations" />
       </StatRow>
 
-      <div className="rounded-xl border border-slate-200 bg-white px-4 pt-4 shadow-card">
+      <ErrorBanner error={error} onRetry={load} />
+
+      <div className="rounded-xl border border-slate-200 bg-white px-4 pt-1 shadow-card">
+        <StatusTabs tabs={tabs} active={tab} onChange={setTab} variant="pill" />
         <div className="mb-4 flex flex-wrap items-center gap-2.5">
           <SearchBox
-            className="w-80"
-            placeholder="Search by candidate name, certificate number, qualification..."
+            className="w-full sm:w-96"
+            placeholder="Search by learner, qualification, provider, hash..."
             value={q}
             onChange={setQ}
           />
-          <SelectPill label="All Qualifications" />
-          <SelectPill label="All Providers" />
-          <SelectPill label="All Statuses" />
-          <SelectPill label="All Trade Areas" />
-          <ToolButton icon="filter">Filter</ToolButton>
+          <ToolButton icon="refresh" className="ml-auto" onClick={load} aria-label="Refresh" />
         </div>
         <DataTable
-          rowKey="cert"
-          activeKey={sel}
-          onRowClick={(r) => setSel(r.cert)}
+          rowKey="credentialHash"
+          activeKey={selected?.credentialHash}
+          onRowClick={(r) => setSel(r.credentialHash)}
+          loading={loading}
+          emptyText="No certification records match this filter."
           columns={[
-            { key: "cert", label: "Certificate Number", render: (r) => <span className="font-semibold text-slate-800">{r.cert}</span> },
-            { key: "candidate", label: "Candidate" },
-            { key: "qualification", label: "Qualification" },
-            { key: "provider", label: "Provider" },
-            { key: "trade", label: "Trade Area" },
-            { key: "issued", label: "Issue Date" },
-            { key: "status", label: "Status", render: (r) => <Badge tone={STATUS_TONES[r.status]}>{r.status}</Badge> },
             {
-              key: "qr",
-              label: "QR Readiness",
-              render: (r) =>
-                r.qr === "Ready" ? (
-                  <Badge tone="green" icon="check">Ready</Badge>
-                ) : (
-                  <Badge tone="amber" icon="clock">In Progress</Badge>
-                ),
-            },
-            {
-              key: "actions",
-              label: "Actions",
-              render: () => (
-                <span className="flex items-center gap-2">
-                  <Icon name="eye" className="h-4 w-4 text-slate-400" />
-                  <Icon name="dots" className="h-4 w-4 text-slate-400" />
+              key: "subjectName", label: "Learner",
+              render: (r) => (
+                <span className="block leading-tight">
+                  <span className="block font-semibold text-slate-800">{r.subjectName || "—"}</span>
+                  <span className="block text-[11px] text-slate-400">{shortHash(r.credentialHash)}</span>
                 </span>
               ),
             },
+            { key: "qualification", label: "Qualification" },
+            { key: "institution", label: "Provider", render: (r) => r.institution || "—" },
+            {
+              key: "zqfLevel", label: "NQF Level",
+              render: (r) => (r.zqfLevel != null ? <Badge tone="blue">Level {r.zqfLevel}</Badge> : "—"),
+            },
+            {
+              key: "status", label: "Status",
+              render: (r) => {
+                const m = SMETA[r.status] || { label: r.status || "—", tone: "slate" };
+                return <Badge tone={m.tone}>{m.label}</Badge>;
+              },
+            },
+            {
+              key: "zaqaValidation", label: "ZAQA State",
+              render: (r) => {
+                const m = VMETA[r.zaqaValidation || "draft"] || VMETA.draft;
+                return <Badge tone={m.tone}>{m.label}</Badge>;
+              },
+            },
+            { key: "issuedAt", label: "Issued", render: (r) => fmtDate(r.issuedAt) },
           ]}
-          rows={rows}
+          rows={pg.rows}
+          footer={<Pagination {...pg.props} className="border-t border-slate-100" />}
         />
-        <div className="flex flex-wrap items-center gap-2">
-          <Pagination summary="Showing 1 to 10 of 8,562 records" page={1} pages={857} className="flex-1" />
-          <SelectPill label="10 / page" className="!py-1.5" />
-        </div>
       </div>
     </PortalShell>
   );

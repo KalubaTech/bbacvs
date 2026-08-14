@@ -1,20 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import PortalShell from "../../../../components/portal/shell";
 import Icon from "../../../../components/portal/icons";
-import { usePortalGuard, fmtDate, fmtDateTime } from "../../../../components/portal/auth";
+import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 import { api, openBlob } from "../../../../lib/api";
 import {
-  Badge, Avatar, StatCard, StatRow, SectionCard, SearchBox, ToolButton,
-  DataTable, Pagination, ActionBtn, KVRow, CheckItem, Timeline, PanelHeader,
+  Badge, Avatar, StatCard, StatRow, SectionCard, SearchBox, SelectPill,
+  ToolButton, DataTable, Pagination, usePager, ActionBtn, KVRow,
+  PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
-
-const QR_ICON = {
-  ok: { icon: "checkCircle", cls: "text-emerald-500" },
-  warn: { icon: "alertCircle", cls: "text-amber-500" },
-  no: { icon: "xCircle", cls: "text-red-500" },
-};
+import CaseTimeline from "../../../../components/portal/CaseTimeline";
 
 // Combined display status of a credential (chain status + ZAQA validation).
 function displayStatus(c) {
@@ -29,28 +26,25 @@ function displayStatus(c) {
   return { label: "Issued", tone: "green" };
 }
 
-function qrState(c) {
-  if (c.status === "revoked") return "no";
-  return c.anchorTx ? "ok" : "warn";
-}
+const ZAQA_FILTERS = [
+  { value: "draft", label: "Draft" },
+  { value: "pending", label: "Awaiting ZAQA" },
+  { value: "validated", label: "Validated" },
+  { value: "rejected", label: "Rejected" },
+  { value: "suspicious", label: "Flagged" },
+  { value: "suspended", label: "Suspended" },
+  { value: "under_dispute", label: "Under Dispute" },
+];
 
-function DetailPanel({ cert, busy, onDownload }) {
-  if (!cert) {
-    return <div className="py-10 text-center text-[13px] text-slate-400">No certificate selected.</div>;
-  }
+function DetailPanel({ cert, busyDownload, busySubmit, onClose, onDownload, onSubmit }) {
   const st = displayStatus(cert);
   return (
     <div>
-      <PanelHeader title="Certificate Details" badge={<Badge tone={st.tone} dot>{st.label}</Badge>} />
+      <PanelHeader title="Certificate Details" badge={<Badge tone={st.tone} dot>{st.label}</Badge>} onClose={onClose} />
 
       <div className="mb-4">
         <div className="text-[11px] text-slate-400">Credential Hash</div>
-        <div className="flex items-center gap-1.5 break-all text-[13px] font-bold text-slate-900">
-          {cert.credentialHash}
-          <button className="shrink-0 text-slate-400 hover:text-slate-600" aria-label="Copy credential hash">
-            <Icon name="clipboard" className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <div className="break-all text-[12.5px] font-bold text-slate-900">{cert.credentialHash}</div>
       </div>
 
       <SectionCard title="Candidate Profile" className="mb-4">
@@ -70,86 +64,71 @@ function DetailPanel({ cert, busy, onDownload }) {
         <KVRow label="Awarding Body" value={cert.institution || "Examinations Council of Zambia"} />
         <KVRow label="Type" value={cert.credentialType || "—"} />
         <KVRow label="ZQF Level" value={cert.zqfLevel ? `ZQF ${cert.zqfLevel}` : "—"} />
-      </SectionCard>
-
-      <div className="mb-4 grid grid-cols-2 gap-3">
-        <SectionCard title="Issuance History">
-          <Timeline
-            items={[
-              cert.zaqaValidatedAt && {
-                title: "ZAQA Validated", sub: cert.zaqaRef ? `Ref: ${cert.zaqaRef}` : "by ZAQA",
-                time: fmtDateTime(cert.zaqaValidatedAt), state: "done",
-              },
-              { title: "Certificate Issued", sub: `by ${cert.institution || "ECZ"}`, time: fmtDateTime(cert.issuedAt), state: "done" },
-            ].filter(Boolean)}
-          />
-        </SectionCard>
-        <SectionCard title="Correction Requests">
-          {cert.correctionRequest?.message ? (
-            <div className="leading-tight">
-              <div className="flex items-center gap-2">
-                <Badge tone={cert.correctionRequest.status === "open" ? "amber" : "slate"}>{cert.correctionRequest.status}</Badge>
-              </div>
-              <p className="mt-2 text-[12px] text-slate-600">{cert.correctionRequest.message}</p>
-              <div className="mt-1 text-[11px] text-slate-400">{fmtDateTime(cert.correctionRequest.requestedAt)}</div>
-            </div>
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center py-4 text-center">
-              <Icon name="print" className="mb-2 h-6 w-6 text-slate-300" />
-              <div className="text-[12px] text-slate-500">No correction requests for this certificate.</div>
-            </div>
-          )}
-        </SectionCard>
-      </div>
-
-      <SectionCard title="Verification Readiness" className="mb-4">
-        <CheckItem state={cert.anchorTx ? "ok" : "warn"} label="Anchored On-Chain" meta={cert.anchorTx ? `${cert.anchorTx.slice(0, 14)}…` : "Not anchored"} />
-        <CheckItem
-          state={cert.zaqaValidation === "validated" ? "ok" : cert.zaqaValidation === "pending" ? "warn" : "pending"}
-          label="ZAQA Sync Status"
-          meta={cert.zaqaValidatedAt ? `Validated ${fmtDate(cert.zaqaValidatedAt)}` : (cert.zaqaValidation || "draft")}
+        <KVRow
+          label="Anchored On-chain"
+          value={cert.anchorTx ? <span className="font-mono text-[11px]">{cert.anchorTx.slice(0, 14)}…</span> : "Not anchored"}
         />
-        <div className="flex items-center justify-between gap-2 py-1.5">
-          <span className="text-[12.5px] text-slate-700">CID</span>
-          <span className="max-w-[180px] truncate text-[12px] font-semibold text-slate-800">{cert.cid || "—"}</span>
-        </div>
-        <ActionBtn tone="outline" full className="mt-2">View Verification Log</ActionBtn>
+        {cert.zaqaRef ? <KVRow label="ZAQA Ref" value={cert.zaqaRef} /> : null}
       </SectionCard>
 
-      <SectionCard title="Certificate Preview" className="mb-4">
-        <div className="flex flex-col items-center rounded-lg border border-slate-200 bg-slate-50 py-6">
-          <Icon name="qr" className="h-16 w-16 text-slate-400" />
-          <div className="mt-2 text-[11px] text-slate-400">Scan to verify certificate authenticity</div>
-        </div>
+      {cert.correctionRequest?.message ? (
+        <SectionCard title="Correction Request" className="mb-4">
+          <Badge tone={cert.correctionRequest.status === "open" ? "amber" : "slate"}>{cert.correctionRequest.status}</Badge>
+          <p className="mt-2 text-[12px] text-slate-600">{cert.correctionRequest.message}</p>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard title="Case History" className="mb-4" pad="p-4">
+        <CaseTimeline events={cert.events} />
       </SectionCard>
 
-      <div className="grid grid-cols-2 gap-2.5">
-        <ActionBtn tone="green" icon="print" full>Reprint</ActionBtn>
-        <ActionBtn tone="orange" icon="alert" full>Suspend Record</ActionBtn>
-        <ActionBtn tone="outline" icon="download" full disabled={busy} onClick={() => onDownload(cert.credentialHash)}>
-          {busy ? "Downloading…" : "Download PDF"}
+      <div className="space-y-2.5">
+        <ActionBtn
+          tone="outline"
+          icon="download"
+          full
+          disabled={busyDownload}
+          onClick={() => onDownload(cert.credentialHash)}
+        >
+          {busyDownload ? "Downloading…" : "Download PDF"}
         </ActionBtn>
-        <ActionBtn tone="outline" full>View Verification Log</ActionBtn>
+        {cert.zaqaValidation === "draft" && (
+          <ActionBtn
+            tone="darkgreen"
+            icon="send"
+            full
+            disabled={busySubmit}
+            onClick={() => onSubmit(cert.credentialHash)}
+          >
+            {busySubmit ? "Submitting…" : "Submit to ZAQA"}
+          </ActionBtn>
+        )}
       </div>
     </div>
   );
 }
 
 export default function EczCertificatesPage() {
-  const { ready, user, token } = usePortalGuard(["ecz"]);
+  const { ready, token } = usePortalGuard(["ecz"]);
   const [q, setQ] = useState("");
+  const [zaqaFilter, setZaqaFilter] = useState("");
   const [sel, setSel] = useState(null);
   const [creds, setCreds] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [busyDownload, setBusyDownload] = useState(false);
+  const [busySubmit, setBusySubmit] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.myIssued(token);
       setCreds(res.credentials || []);
-      setError(null);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   }, [token]);
 
@@ -158,72 +137,115 @@ export default function EczCertificatesPage() {
   }, [ready, load]);
 
   async function onDownload(hash) {
-    setBusy(true);
+    setBusyDownload(true);
+    setError(null);
     try {
       openBlob(await api.downloadPDF(token, hash), `credential-${hash.slice(0, 10)}.pdf`);
     } catch (err) {
       setError(err.message);
     } finally {
-      setBusy(false);
+      setBusyDownload(false);
     }
   }
 
-  if (!ready) return null;
+  async function onSubmit(hash) {
+    setBusySubmit(true);
+    setError(null);
+    try {
+      await api.submitToZaqa(token, hash);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusySubmit(false);
+    }
+  }
 
-  const rows = creds.filter(
-    (c) => !q ||
+  const rows = creds.filter((c) => {
+    if (zaqaFilter && (c.zaqaValidation || "draft") !== zaqaFilter) return false;
+    return (
+      !q ||
       ((c.credentialHash || "") + (c.subjectName || "") + (c.holderNationalId || "") + (c.institution || "") + (c.qualification || ""))
-        .toLowerCase().includes(q.toLowerCase())
-  );
-  const selected = creds.find((c) => c.credentialHash === sel) || rows[0] || creds[0] || null;
+        .toLowerCase()
+        .includes(q.toLowerCase())
+    );
+  });
+  const pg = usePager(rows, 10, [q, zaqaFilter]);
+  const selected = creds.find((c) => c.credentialHash === sel) || null;
 
   const validated = creds.filter((c) => c.zaqaValidation === "validated").length;
   const pendingIssue = creds.filter((c) => c.status === "pending").length;
   const awaitingZaqa = creds.filter((c) => c.zaqaValidation === "pending").length;
   const revoked = creds.filter((c) => c.status === "revoked").length;
 
+  const csvCols = [
+    { key: "credentialHash", label: "Credential Hash" },
+    { key: "subjectName", label: "Learner" },
+    { key: "holderNationalId", label: "NRC" },
+    { key: "qualification", label: "Qualification" },
+    { key: "graduationYear", label: "Exam Year" },
+    { key: "status", label: "Status" },
+    { key: "zaqaValidation", label: "ZAQA State", csv: (r) => r.zaqaValidation || "draft" },
+    { key: "issuedAt", label: "Issued", csv: (r) => fmtDate(r.issuedAt) },
+  ];
+
+  if (!ready) return null;
+
   return (
     <PortalShell
       portal="ecz"
       active="certificates"
       title="ECZ Portal – Certificate Register"
-      subtitle="Manage issued certificates and track verification readiness for BBACVS qualifications."
-      user={{ name: user.name || user.email, sub: user.email }}
+      subtitle="Manage issued certificates, submit them for ZAQA validation and track verification readiness."
       actions={
-        <>
-          <ActionBtn tone="darkgreen" icon="plus">Issue Certificate</ActionBtn>
-          <ActionBtn tone="outline">
-            More Actions
-            <Icon name="chevronDown" className="h-3.5 w-3.5 text-slate-400" />
-          </ActionBtn>
-        </>
+        <Link
+          href="/ecz/classic"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3.5 py-2 text-[13px] font-semibold text-white transition hover:bg-emerald-700"
+        >
+          <Icon name="plus" className="h-4 w-4" />
+          Issue Certificate
+        </Link>
       }
-      panel={<DetailPanel cert={selected} busy={busy} onDownload={onDownload} />}
+      panel={
+        selected ? (
+          <DetailPanel
+            cert={selected}
+            busyDownload={busyDownload}
+            busySubmit={busySubmit}
+            onClose={() => setSel(null)}
+            onDownload={onDownload}
+            onSubmit={onSubmit}
+          />
+        ) : null
+      }
+      panelKey={selected?.credentialHash}
       panelWidth="w-[400px]"
     >
       <StatRow cols={5}>
-        <StatCard icon="file" iconTone="softgreen" label="Certificates Issued" value={creds.length} sub="All ECZ records" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="Ready for Verification" value={validated} sub="ZAQA validated" />
-        <StatCard icon="clock" iconTone="amber" label="Pending Issuance" value={pendingIssue} sub="Awaiting anchoring" />
-        <StatCard icon="print" iconTone="softblue" label="Awaiting ZAQA" value={awaitingZaqa} sub="In validation queue" />
-        <StatCard icon="shield" iconTone="softred" label="Revoked Records" value={revoked} sub="On-chain revocations" />
+        <StatCard icon="file" iconTone="softgreen" label="Certificates Issued" value={String(creds.length)} sub="All ECZ records" />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="ZAQA Validated" value={String(validated)} sub="Ready for verification" />
+        <StatCard icon="clock" iconTone="amber" label="Pending Issuance" value={String(pendingIssue)} sub="Awaiting anchoring" />
+        <StatCard icon="send" iconTone="softblue" label="Awaiting ZAQA" value={String(awaitingZaqa)} sub="In validation queue" />
+        <StatCard icon="revoke" iconTone="softred" label="Revoked Records" value={String(revoked)} sub="On-chain revocations" />
       </StatRow>
 
-      {error && <div className="mb-3 text-[13px] font-medium text-red-600">{error}</div>}
+      <ErrorBanner error={error} onRetry={load} />
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-card">
         <div className="flex flex-wrap items-center gap-2.5 px-4 py-3">
-          <SearchBox className="w-96" placeholder="Search certificates by hash, learner, NRC..." value={q} onChange={setQ} />
-          <ToolButton icon="filter">Filter</ToolButton>
+          <SearchBox className="w-full sm:w-96" placeholder="Search certificates by hash, learner, NRC..." value={q} onChange={setQ} />
+          <SelectPill label="ZAQA State" value={zaqaFilter} onChange={setZaqaFilter} options={ZAQA_FILTERS} />
           <div className="ml-auto flex items-center gap-2.5">
-            <ToolButton icon="download">Export</ToolButton>
-            <ToolButton icon="refresh" onClick={load} />
+            <ToolButton icon="download" onClick={() => exportCSV("ecz-certificate-register", csvCols, rows)}>Export</ToolButton>
+            <ToolButton icon="refresh" onClick={load} aria-label="Refresh" />
           </div>
         </div>
         <DataTable
           rowKey="credentialHash"
           activeKey={selected?.credentialHash}
           onRowClick={(r) => setSel(r.credentialHash)}
+          loading={loading}
+          emptyText="No certificates match this filter."
           columns={[
             {
               key: "no", label: "Certificate",
@@ -240,15 +262,7 @@ export default function EczCertificatesPage() {
             },
             { key: "qualification", label: "Qualification" },
             { key: "year", label: "Exam Year", render: (r) => r.graduationYear || "—" },
-            { key: "school", label: "School", render: (r) => r.institution || "—" },
             { key: "issued", label: "Issue Date", render: (r) => fmtDate(r.issuedAt) },
-            {
-              key: "qr", label: "QR Ready", thClass: "text-center", tdClass: "text-center",
-              render: (r) => {
-                const s = QR_ICON[qrState(r)];
-                return <Icon name={s.icon} className={`inline h-4 w-4 ${s.cls}`} />;
-              },
-            },
             {
               key: "status", label: "Status",
               render: (r) => {
@@ -256,16 +270,10 @@ export default function EczCertificatesPage() {
                 return <Badge tone={st.tone}>{st.label}</Badge>;
               },
             },
-            { key: "menu", label: "", render: () => <Icon name="dots" className="h-4 w-4 text-slate-400" /> },
           ]}
-          rows={rows}
-          footer={
-            rows.length === 0 ? (
-              <div className="px-4 py-8 text-center text-[13px] text-slate-400">No records yet.</div>
-            ) : null
-          }
+          rows={pg.rows}
+          footer={<Pagination {...pg.props} className="border-t border-slate-100" />}
         />
-        <Pagination summary={`Showing ${rows.length} of ${creds.length} certificates`} page={1} pages={1} />
       </div>
     </PortalShell>
   );

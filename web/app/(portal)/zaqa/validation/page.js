@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PortalShell from "../../../../components/portal/shell";
 import Icon from "../../../../components/portal/icons";
+import CaseTimeline from "../../../../components/portal/CaseTimeline";
 import {
-  Badge, Avatar, AvatarName, KV, KVGrid, SectionCard, Timeline,
-  ActionBtn, TONES,
+  Badge, Avatar, AvatarName, KV, KVGrid, SectionCard, Timeline, CheckItem,
+  ActionBtn, Modal, ErrorBanner, TONES,
 } from "../../../../components/portal/kit";
 import { Donut, CHART } from "../../../../components/portal/charts";
 import { api } from "../../../../lib/api";
@@ -30,14 +31,6 @@ const RISK_META = {
   critical: { label: "Critical Risk", cls: "text-red-600", color: CHART.red, tone: "red" },
 };
 
-// Static decorative list — evidence uploads have no backend counterpart.
-const EVIDENCE = [
-  { title: "Degree Certificate", file: "certificate.pdf" },
-  { title: "Academic Transcript", file: "transcript.pdf" },
-  { title: "Institution Verification Letter", file: "verification_letter.pdf" },
-  { title: "Digital Signature Report", file: "signature_report.json" },
-];
-
 function checkIcon(rule) {
   const r = (rule || "").toLowerCase();
   if (r.includes("issuer registered")) return "bank";
@@ -59,6 +52,11 @@ function ValidationInner() {
   const [creds, setCreds] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [note, setNote] = useState("");
+  const [suspendOpen, setSuspendOpen] = useState(false);
+  const [suspendReason, setSuspendReason] = useState("");
+  const [reinstateOpen, setReinstateOpen] = useState(false);
+  const [nqfLevel, setNqfLevel] = useState(null); // descriptor doc for the selected credential's level
 
   const load = useCallback(async () => {
     try {
@@ -79,12 +77,60 @@ function ValidationInner() {
     creds[0] ||
     null;
 
+  // NQF descriptor analysis for the claimed level (spec finding 24).
+  const claimedLevel = cred?.zqfLevel ?? null;
+  useEffect(() => {
+    let stop = false;
+    setNqfLevel(null);
+    if (claimedLevel == null) return;
+    api
+      .nqfLevel(claimedLevel)
+      .then((d) => !stop && setNqfLevel(d.level || null))
+      .catch(() => {});
+    return () => {
+      stop = true;
+    };
+  }, [claimedLevel]);
+
   async function setStatus(zaqaValidation) {
     if (!cred || busy) return;
     setBusy(zaqaValidation);
     setError(null);
     try {
-      await api.zaqaSetValidation(token, cred.credentialHash, { zaqaValidation });
+      await api.zaqaSetValidation(token, cred.credentialHash, { zaqaValidation, note });
+      setNote("");
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function suspend() {
+    if (!cred || busy || suspendReason.trim().length < 3) return;
+    setBusy("suspend");
+    setError(null);
+    try {
+      await api.zaqaSuspend(token, cred.credentialHash, suspendReason.trim());
+      setSuspendOpen(false);
+      setSuspendReason("");
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reinstate() {
+    if (!cred || busy) return;
+    setBusy("reinstate");
+    setError(null);
+    try {
+      await api.zaqaReinstate(token, cred.credentialHash, note);
+      setNote("");
+      setReinstateOpen(false);
       await load();
     } catch (err) {
       setError(err.message);
@@ -117,6 +163,8 @@ function ValidationInner() {
   const risk = RISK_META[report?.risk] || null;
   const status = STATUS_META[cred?.zaqaValidation] || { label: cred?.zaqaValidation || "—", tone: "slate" };
   const decided = cred && ["validated", "rejected", "suspended"].includes(cred.zaqaValidation);
+  const isSuspended = cred?.zaqaValidation === "suspended";
+  const canSuspend = cred && ["validated", "pending", "suspicious"].includes(cred.zaqaValidation);
 
   const workflow = cred
     ? [
@@ -145,14 +193,49 @@ function ValidationInner() {
       <h2 className="mb-4 text-[15px] font-bold text-slate-900">Validation Workflow</h2>
       {cred ? <Timeline items={workflow} /> : <p className="text-[12.5px] text-slate-400">No credential selected.</p>}
 
-      <SectionCard title="Officer Review" className="mt-5" pad="p-4">
+      {cred && (
+        <SectionCard title="Explainable Decision" className="mt-5" pad="p-4">
+          {report ? (
+            <>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <Badge tone={risk?.tone || "slate"}>{risk?.label || report.risk}</Badge>
+                <Badge tone="outline">
+                  {passed}/{checks.length} checks passed
+                </Badge>
+              </div>
+              <div className="space-y-0.5">
+                {checks.map((c) => (
+                  <CheckItem key={c.rule} state={c.pass ? "ok" : "missing"} label={c.rule} meta={c.pass ? "Pass" : "Fail"} />
+                ))}
+              </div>
+              <p className="mt-2.5 rounded-lg bg-blue-50 p-2.5 text-[12px] leading-snug text-blue-800">
+                <span className="font-semibold">Recommendation:</span> {report.recommendation}
+              </p>
+            </>
+          ) : (
+            <p className="text-[12.5px] text-slate-400">
+              No automated report yet — checks run when the credential is submitted to ZAQA.
+            </p>
+          )}
+          <div className="mt-3 space-y-1 border-t border-slate-100 pt-2.5 text-[11.5px] text-slate-500">
+            <div>
+              <span className="font-semibold">Framework:</span> {cred.frameworkVersion || "ZM-NQF-2025"}
+            </div>
+            <div>
+              <span className="font-semibold">ZAQA Reference:</span> {cred.zaqaRef || "Not yet assigned"}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard title="Officer Review" className="mt-4" pad="p-4">
         <AvatarName name={user.name || user.email} sub="ZAQA Officer" />
         <div className="mt-3 grid grid-cols-1 gap-3">
           <KV label="Checks Last Run" value={report ? fmtDateTime(report.ranAt) : "—"} />
           <KV label="Current Status" value={status.label} />
         </div>
         <div className="mt-3">
-          <div className="text-[11px] font-medium text-slate-400">Officer Notes</div>
+          <div className="text-[11px] font-medium text-slate-400">Recorded Officer Note</div>
           <div className="mt-1 rounded-lg border border-slate-200 p-2.5 text-[12.5px] leading-snug text-slate-700">
             {cred?.zaqaNote || "No officer notes recorded for this credential."}
           </div>
@@ -160,22 +243,49 @@ function ValidationInner() {
       </SectionCard>
 
       <SectionCard title="Action Center" className="mt-4" pad="p-4">
+        <label className="mb-2.5 block">
+          <span className="text-[11px] font-medium text-slate-400">Decision note (recorded with the decision)</span>
+          <textarea
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={300}
+            placeholder="Optional note for the audit trail…"
+            className="mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          />
+        </label>
         <div className="space-y-2.5">
-          <ActionBtn tone="green" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={() => setStatus("validated")}>
-            {busy === "validated" ? "Approving…" : "Approve"}
-          </ActionBtn>
-          <ActionBtn tone="orange" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={() => setStatus("suspicious")}>
-            {busy === "suspicious" ? "Returning…" : "Return for Clarification"}
-          </ActionBtn>
-          <ActionBtn tone="red" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={() => setStatus("rejected")}>
-            {busy === "rejected" ? "Rejecting…" : "Reject"}
-          </ActionBtn>
-          <ActionBtn tone="softred" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={() => setStatus("under_dispute")}>
-            {busy === "under_dispute" ? "Escalating…" : "Escalate to Senior Officer"}
-          </ActionBtn>
-          <ActionBtn tone="red" icon="alert" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={revoke}>
-            {busy === "revoke" ? "Revoking…" : "Revoke On-Chain"}
-          </ActionBtn>
+          {!isSuspended && (
+            <>
+              <ActionBtn tone="green" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={() => setStatus("validated")}>
+                {busy === "validated" ? "Approving…" : "Approve"}
+              </ActionBtn>
+              <ActionBtn tone="orange" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={() => setStatus("suspicious")}>
+                {busy === "suspicious" ? "Returning…" : "Return for Clarification"}
+              </ActionBtn>
+              <ActionBtn tone="red" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={() => setStatus("rejected")}>
+                {busy === "rejected" ? "Rejecting…" : "Reject"}
+              </ActionBtn>
+              <ActionBtn tone="softred" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={() => setStatus("under_dispute")}>
+                {busy === "under_dispute" ? "Escalating…" : "Escalate to Senior Officer"}
+              </ActionBtn>
+            </>
+          )}
+          {canSuspend && (
+            <ActionBtn tone="softorange" icon="pause" full disabled={!!busy} className="disabled:opacity-50" onClick={() => setSuspendOpen(true)}>
+              Suspend Credential
+            </ActionBtn>
+          )}
+          {isSuspended && (
+            <ActionBtn tone="softgreen" icon="checkCircle" full disabled={!!busy} className="disabled:opacity-50" onClick={() => setReinstateOpen(true)}>
+              Reinstate Credential
+            </ActionBtn>
+          )}
+          {cred?.status !== "revoked" && (
+            <ActionBtn tone="red" icon="alert" full disabled={!cred || !!busy} className="disabled:opacity-50" onClick={revoke}>
+              {busy === "revoke" ? "Revoking…" : "Revoke On-Chain"}
+            </ActionBtn>
+          )}
         </div>
       </SectionCard>
     </div>
@@ -185,22 +295,22 @@ function ValidationInner() {
     <PortalShell
       portal="zaqa"
       active="validation"
-      title="ZAQA Portal – Validation Review"
-      subtitle="Automated Qualification Validation Workflow / One-Click ZAQA Validation"
-      user={{ name: user.name || user.email, sub: user.email }}
+      title="Validation Review"
+      subtitle="Automated qualification validation workflow with explainable, one-click ZAQA decisions."
       actions={
         <Link
           href="/zaqa/applications"
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50"
         >
           <Icon name="chevronLeft" className="h-4 w-4" />
-          Back to Queue
+          Back to Case Management
         </Link>
       }
       panel={panel}
+      panelKey={cred?.credentialHash}
       panelWidth="w-[380px]"
     >
-      {error && <div className="mb-3 text-[12.5px] font-medium text-red-600">{error}</div>}
+      <ErrorBanner error={error} onRetry={load} />
       {!cred ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-[13px] text-slate-400 shadow-card">
           No credentials submitted for validation yet.
@@ -216,7 +326,7 @@ function ValidationInner() {
                   <div className="min-w-0 leading-tight">
                     <div className="text-[13px] font-bold text-slate-900">{cred.subjectName || "—"}</div>
                     <div className="mt-0.5 text-[11px] text-slate-500">Credential Holder</div>
-                    <div className="truncate text-[11px] text-slate-500">{cred.institution || "—"}</div>
+                    <div className="truncate text-[11px] text-slate-500">{cred.holderEmail || cred.institution || "—"}</div>
                   </div>
                 </div>
                 <div className="leading-tight">
@@ -244,7 +354,7 @@ function ValidationInner() {
                   { label: "Institution", value: cred.institution || "—" },
                   { label: "Date Issued", value: fmtDate(cred.issuedAt) },
                   { label: "Credential Type", value: cred.credentialType || "—" },
-                  { label: "Country", value: "Zambia" },
+                  { label: "Framework Version", value: cred.frameworkVersion || "—" },
                   { label: "ZQF Level", value: cred.zqfLevel != null ? `Level ${cred.zqfLevel}` : "Not assigned" },
                   { label: "On-chain Status", value: cred.status || "—" },
                   { label: "ZAQA Reference", value: cred.zaqaRef || "—" },
@@ -274,24 +384,50 @@ function ValidationInner() {
               </div>
             )}
 
-            {report && (
-              <div className="flex items-start justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
-                <div className="flex gap-3">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-                    <Icon name="sparkle" className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <div className="text-[13px] font-bold text-slate-900">Explainable Decision</div>
-                    <p className="mt-1 text-[12.5px] leading-snug text-slate-600">
-                      {passed} of {checks.length} automated checks passed. Risk classified as {report.risk}.
-                      The engine recommends: {report.recommendation}
+            {cred.zqfLevel != null && (
+              <SectionCard
+                title="NQF Descriptor Analysis"
+                pad="p-4"
+                action={
+                  nqfLevel && (
+                    <Badge tone="softblue">
+                      {nqfLevel.versionCode} · Level {nqfLevel.level}
+                    </Badge>
+                  )
+                }
+              >
+                {nqfLevel ? (
+                  <>
+                    <div className="mb-3 text-[13px] font-bold text-slate-900">{nqfLevel.title}</div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {[
+                        { label: "Knowledge", text: nqfLevel.descriptors?.knowledge },
+                        { label: "Skills", text: nqfLevel.descriptors?.skills },
+                        { label: "Autonomy & Responsibility", text: nqfLevel.descriptors?.autonomyResponsibility },
+                      ].map((d) => (
+                        <div key={d.label} className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+                          <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{d.label}</div>
+                          <p className="mt-1 text-[12px] leading-snug text-slate-700">{d.text || "—"}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {(nqfLevel.typicalQualifications || []).length > 0 && (
+                      <div className="mt-3 text-[12px] text-slate-500">
+                        <span className="font-semibold text-slate-600">Typical qualifications:</span>{" "}
+                        {nqfLevel.typicalQualifications.join(", ")}
+                      </div>
+                    )}
+                    <p className="mt-3 border-t border-slate-100 pt-2.5 text-[11.5px] text-slate-400">
+                      Compare the awarded qualification against these level descriptors to judge whether the
+                      claimed Level {cred.zqfLevel} is appropriate.
                     </p>
-                  </div>
-                </div>
-                <Badge tone={risk ? `soft${risk.tone === "green" ? "green" : "red"}` : "slate"} className="shrink-0">
-                  Recommendation: {report.recommendation.split(" ")[0]}
-                </Badge>
-              </div>
+                  </>
+                ) : (
+                  <p className="py-3 text-center text-[12.5px] text-slate-400">
+                    Loading Level {cred.zqfLevel} descriptors from the NQF knowledge base…
+                  </p>
+                )}
+              </SectionCard>
             )}
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -375,25 +511,74 @@ function ValidationInner() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Evidence & Documents" pad="p-3">
-              <div className="space-y-2">
-                {EVIDENCE.map((d) => (
-                  <div key={d.file} className="flex items-center gap-2.5 rounded-lg border border-slate-100 px-2.5 py-2">
-                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${TONES.softred}`}>
-                      <Icon name="fileText" className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1 leading-tight">
-                      <div className="truncate text-[12px] font-medium text-slate-700">{d.title}</div>
-                      <div className="truncate text-[10.5px] text-slate-400">{d.file}</div>
-                    </div>
-                    <ActionBtn tone="outline" className="!px-2.5 !py-1 !text-[11px]">View</ActionBtn>
-                  </div>
-                ))}
-              </div>
+            <SectionCard title="Case History" pad="p-4">
+              <CaseTimeline events={cred.events} />
             </SectionCard>
           </div>
         </div>
       )}
+
+      {/* Suspend modal */}
+      <Modal
+        open={suspendOpen}
+        onClose={() => setSuspendOpen(false)}
+        title="Suspend Credential"
+        footer={
+          <>
+            <ActionBtn tone="outline" onClick={() => setSuspendOpen(false)}>Cancel</ActionBtn>
+            <ActionBtn
+              tone="orange"
+              icon="pause"
+              disabled={!!busy || suspendReason.trim().length < 3}
+              className="disabled:opacity-50"
+              onClick={suspend}
+            >
+              {busy === "suspend" ? "Suspending…" : "Suspend"}
+            </ActionBtn>
+          </>
+        }
+      >
+        <p className="mb-3 text-[13px] text-slate-600">
+          Temporarily withdraw <span className="font-semibold">{cred?.subjectName}</span>&apos;s{" "}
+          <span className="font-semibold">{cred?.qualification}</span> pending investigation. The holder and the
+          issuing institution are notified.
+        </p>
+        <label className="block">
+          <span className="text-[11px] font-medium text-slate-400">
+            Suspension reason<span className="text-red-500"> *</span>
+          </span>
+          <textarea
+            rows={3}
+            value={suspendReason}
+            onChange={(e) => setSuspendReason(e.target.value)}
+            maxLength={500}
+            placeholder="Why is this credential being suspended?"
+            className="mt-1 w-full rounded-lg border border-slate-200 p-2.5 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          />
+        </label>
+      </Modal>
+
+      {/* Reinstate modal */}
+      <Modal
+        open={reinstateOpen}
+        onClose={() => setReinstateOpen(false)}
+        title="Reinstate Credential"
+        footer={
+          <>
+            <ActionBtn tone="outline" onClick={() => setReinstateOpen(false)}>Cancel</ActionBtn>
+            <ActionBtn tone="green" icon="checkCircle" disabled={!!busy} className="disabled:opacity-50" onClick={reinstate}>
+              {busy === "reinstate" ? "Reinstating…" : "Reinstate"}
+            </ActionBtn>
+          </>
+        }
+      >
+        <p className="mb-3 text-[13px] text-slate-600">
+          Lift the suspension on <span className="font-semibold">{cred?.subjectName}</span>&apos;s{" "}
+          <span className="font-semibold">{cred?.qualification}</span>. It returns to{" "}
+          {cred?.zaqaRef ? "validated status" : "the validation queue"}. The decision note above is recorded with
+          the reinstatement.
+        </p>
+      </Modal>
     </PortalShell>
   );
 }
