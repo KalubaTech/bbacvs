@@ -76,10 +76,6 @@ function DetailPanel({ cred, onClose }) {
             },
           ]}
         />
-        <div className="mt-3">
-          <div className="text-[11px] font-medium text-slate-400">Credential Hash</div>
-          <div className="mt-0.5 break-all font-mono text-[11px] text-slate-700">{cred.credentialHash}</div>
-        </div>
       </SectionCard>
 
       {cred.suspension?.suspendedAt && (
@@ -104,9 +100,8 @@ function DetailPanel({ cred, onClose }) {
       {cred.supersededBy && (
         <SectionCard title="Supersession" className="mb-4" pad="p-4">
           <p className="text-[12.5px] leading-relaxed text-slate-600">
-            This credential was superseded by a corrected reissue. Replacement hash:
+            This credential was superseded by a corrected reissue — the holder now carries the replacement credential.
           </p>
-          <div className="mt-1.5 break-all font-mono text-[11px] text-slate-700">{cred.supersededBy}</div>
         </SectionCard>
       )}
 
@@ -138,7 +133,6 @@ export default function HeaEvidencePage() {
 
   useEffect(() => { if (ready) load(); }, [ready, load]);
 
-  if (!ready) return null;
 
   const counts = credentials.reduce((m, c) => {
     m[c.zaqaValidation || "draft"] = (m[c.zaqaValidation || "draft"] || 0) + 1;
@@ -169,6 +163,7 @@ export default function HeaEvidencePage() {
     );
   });
   const pager = usePager(rows, 10, [tab, q]);
+  if (!ready) return null;
   const selected = sel === null ? null : credentials.find((r) => r.credentialHash === sel) || rows[0] || null;
 
   const columns = [

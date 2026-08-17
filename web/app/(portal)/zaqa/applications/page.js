@@ -216,9 +216,7 @@ export default function ZaqaApplicationsPage() {
                   },
                   {
                     label: "Superseded By",
-                    value: selected.raw.supersededBy ? (
-                      <span className="break-all font-mono text-[11px]">{selected.raw.supersededBy}</span>
-                    ) : ("—"),
+                    value: selected.raw.supersededBy ? "Corrected reissue issued" : "—",
                   },
                 ]
               : []),

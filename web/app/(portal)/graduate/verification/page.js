@@ -83,11 +83,10 @@ export default function GraduateVerificationPage() {
           </span>
           <span className="block leading-tight">
             <span className="block font-medium text-slate-700">{r.qualification || "—"}</span>
-            <span className="block font-mono text-[10.5px] text-slate-400">{shortHash(r.credentialHash)}</span>
           </span>
         </span>
       ),
-      csv: (r) => r.qualification || r.credentialHash,
+      csv: (r) => r.qualification || "",
     },
     {
       key: "mode", label: "Mode",

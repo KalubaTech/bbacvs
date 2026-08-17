@@ -125,7 +125,6 @@ export default function HeaCompliancePage() {
     catch (err) { setError(err.message); }
   }
 
-  if (!ready) return null;
 
   const counts = institutions.reduce((m, i) => {
     const s = i.heaStatus || "approved";
@@ -154,6 +153,7 @@ export default function HeaCompliancePage() {
     return !q || (r.institution + (r.sector || "")).toLowerCase().includes(q.toLowerCase());
   });
   const pager = usePager(rows, 10, [q, statusFilter, trustFilter]);
+  if (!ready) return null;
   const selected = sel === null ? null : institutions.find((r) => r.id === sel) || rows[0] || null;
 
   const columns = [

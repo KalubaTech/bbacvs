@@ -67,7 +67,6 @@ export default function HeaDashboardPage() {
     finally { setBusy(null); }
   }
 
-  if (!ready) return null;
 
   const statusCounts = institutions.reduce((m, i) => {
     const s = i.heaStatus || "approved";
@@ -104,6 +103,7 @@ export default function HeaDashboardPage() {
     (r) => !q || (r.institution + (r.sector || "")).toLowerCase().includes(q.toLowerCase())
   );
   const pager = usePager(queueRows, 10, [q]);
+  if (!ready) return null;
 
   const recent = (monitoring?.recent || []).slice(0, 8);
 

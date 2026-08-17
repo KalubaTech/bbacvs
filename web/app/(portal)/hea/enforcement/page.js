@@ -100,7 +100,6 @@ export default function HeaEnforcementPage() {
     finally { setBusy(null); }
   }
 
-  if (!ready) return null;
 
   const suspended = institutions.filter((i) => i.heaStatus === "suspended");
 
@@ -115,6 +114,7 @@ export default function HeaEnforcementPage() {
     (r) => !q || (r.institution + (r.heaNote || "")).toLowerCase().includes(q.toLowerCase())
   );
   const pager = usePager(rows, 10, [q]);
+  if (!ready) return null;
   const selected = sel === null ? null : suspended.find((r) => r.id === sel) || rows[0] || null;
 
   const columns = [

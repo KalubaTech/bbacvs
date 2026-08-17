@@ -92,7 +92,7 @@ function DetailPanel({ user, creds, cred, busy, error, onClose, onQR, onPDF, onC
           ]}
         />
         <div className="mt-3 text-[11px] text-slate-400">
-          Hash: <span className="break-all font-mono">{cred.credentialHash}</span>
+          Anchored in the national registry
         </div>
       </div>
 

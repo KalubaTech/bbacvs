@@ -161,8 +161,10 @@ export default function ZaqaRevocationsPage() {
         onClose={() => setSel(null)}
       />
       <div className="mb-4">
-        <div className="text-[11px] text-slate-400">Credential Hash</div>
-        <div className="break-all font-mono text-[12px] font-semibold text-slate-800">{selected.credentialHash}</div>
+        <div className="text-[11px] text-slate-400">Credential</div>
+        <div className="text-[13px] font-semibold text-slate-800">
+          {selected.subjectName || "—"} — {selected.qualification || "—"}
+        </div>
       </div>
 
       <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3.5">
@@ -191,8 +193,8 @@ export default function ZaqaRevocationsPage() {
         {selected.supersededBy && (
           <div className="mt-3 border-t border-slate-100 pt-3">
             <div className="text-[11px] font-medium text-slate-400">Replacement credential</div>
-            <div className="mt-1">
-              <CopyHash hash={selected.supersededBy} />
+            <div className="mt-1 text-[12.5px] text-slate-700">
+              A corrected replacement credential has been issued to the holder.
             </div>
           </div>
         )}

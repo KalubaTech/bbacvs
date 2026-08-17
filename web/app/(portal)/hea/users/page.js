@@ -114,12 +114,12 @@ export default function HeaUsersPage() {
     setPanelError(null);
   }
 
-  if (!ready) return null;
 
   const rows = users.filter(
     (u) => !q || ((u.name || "") + u.email + (u.roleLabel || "")).toLowerCase().includes(q.toLowerCase())
   );
   const pager = usePager(rows, 10, [q]);
+  if (!ready) return null;
 
   const roleCounts = users.reduce((m, u) => {
     m[u.role] = (m[u.role] || 0) + 1;

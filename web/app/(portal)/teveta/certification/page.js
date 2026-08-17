@@ -39,8 +39,10 @@ function DetailPanel({ rec, onClose }) {
       <PanelHeader title="Certification Record" badge={<Badge tone={s.tone} dot>{s.label}</Badge>} onClose={onClose} />
 
       <div className="mb-4">
-        <div className="text-[11px] text-slate-400">Credential Hash</div>
-        <div className="break-all text-[12.5px] font-bold text-slate-900">{rec.credentialHash}</div>
+        <div className="text-[11px] text-slate-400">Record</div>
+        <div className="text-[13px] font-bold text-slate-900">
+          {rec.subjectName || "—"} — {rec.qualification || "—"}
+        </div>
       </div>
 
       <div className="mb-4 rounded-xl border border-slate-200 p-3.5">

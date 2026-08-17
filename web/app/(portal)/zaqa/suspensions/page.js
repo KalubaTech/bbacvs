@@ -195,8 +195,10 @@ export default function ZaqaSuspensionsPage() {
         onClose={() => setSel(null)}
       />
       <div className="mb-4">
-        <div className="text-[11px] text-slate-400">Credential Hash</div>
-        <div className="break-all font-mono text-[12px] font-semibold text-slate-800">{selected.credentialHash}</div>
+        <div className="text-[11px] text-slate-400">Credential</div>
+        <div className="text-[13px] font-semibold text-slate-800">
+          {selected.subjectName || "—"} — {selected.qualification || "—"}
+        </div>
       </div>
 
       <SectionCard title="Case Facts" className="mb-4" pad="p-4">

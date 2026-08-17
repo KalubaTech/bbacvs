@@ -56,8 +56,6 @@ function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onVie
       </div>
 
       <div className="mb-4 space-y-3 rounded-xl border border-slate-200 p-3.5">
-        <KV label="DID" value={<span className="break-all font-mono text-[12px]">{short(inst.did)}</span>} />
-        <KV label="Wallet Address" value={<span className="break-all font-mono text-[12px]">{short(inst.walletAddress)}</span>} />
         <KV label="Registered On" value={fmtDate(inst.createdAt)} />
         <KV label="ZAQA Trusted" value={inst.zaqaTrusted ? "Yes" : "No"} />
         {inst.heaNote ? <KV label="HEA Note" value={inst.heaNote} /> : null}
@@ -266,7 +264,6 @@ export default function HeaInstitutionsPage() {
     catch (err) { setError(err.message); }
   }
 
-  if (!ready) return null;
 
   const counts = institutions.reduce((m, i) => {
     const s = i.heaStatus || "approved";
@@ -301,6 +298,7 @@ export default function HeaInstitutionsPage() {
     return !q || (r.institution + (r.sector || "")).toLowerCase().includes(q.toLowerCase());
   });
   const pager = usePager(rows, 10, [tab, q, sector, statusFilter]);
+  if (!ready) return null;
   const selected = sel === null ? null : institutions.find((r) => r.id === sel) || rows[0] || null;
 
   const columns = [

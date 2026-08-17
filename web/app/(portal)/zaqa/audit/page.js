@@ -38,22 +38,20 @@ const ACTIVITY_COLUMNS = [
   { key: "summary", label: "Summary" },
 ];
 
+// Table shows plain-language rows; the CSV export keeps the full technical
+// record (tx hash, wallet, credential hash) for audit evidence.
+const CHAIN_EXPORT_COLUMNS = [
+  { key: "blockNumber", label: "Block" },
+  { key: "txHash", label: "Transaction", csv: (r) => r.txHash || "" },
+  { key: "issuer", label: "Issuer Wallet", csv: (r) => r.issuer || "" },
+  { key: "credentialHash", label: "Credential Hash", csv: (r) => r.credentialHash || "" },
+  { key: "timestamp", label: "Anchored At", csv: (r) => (r.timestamp ? new Date(r.timestamp * 1000).toISOString() : "") },
+];
 const CHAIN_COLUMNS = [
   { key: "blockNumber", label: "Block" },
   {
-    key: "txHash", label: "Transaction",
-    render: (r) => <span className="font-mono text-[12px]">{shortHex(r.txHash)}</span>,
-    csv: (r) => r.txHash || "",
-  },
-  {
-    key: "issuer", label: "Issuer Wallet",
-    render: (r) => <span className="font-mono text-[12px]">{shortHex(r.issuer)}</span>,
-    csv: (r) => r.issuer || "",
-  },
-  {
-    key: "credentialHash", label: "Credential Hash",
-    render: (r) => <span className="font-mono text-[12px]">{shortHex(r.credentialHash)}</span>,
-    csv: (r) => r.credentialHash || "",
+    key: "event", label: "Event",
+    render: () => <span className="text-[12.5px] text-slate-700">Credential anchored — Blockchain Integrity: Verified</span>,
   },
   {
     key: "timestamp", label: "Anchored At",
@@ -222,7 +220,7 @@ export default function ZaqaAuditPage() {
           </ToolButton>
           <ToolButton
             icon="download"
-            onClick={() => exportCSV("zaqa-onchain-events", CHAIN_COLUMNS, chainRows)}
+            onClick={() => exportCSV("zaqa-onchain-events", CHAIN_EXPORT_COLUMNS, chainRows)}
             disabled={chainRows.length === 0}
             className="disabled:opacity-50"
           >

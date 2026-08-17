@@ -66,7 +66,7 @@ function DetailPanel({ req, busy, onClose, onResolve }) {
       <Section n={2} title="Linked Record">
         <KVGrid
           cols={1}
-          items={[{ label: "Credential Hash", value: <span className="break-all">{req.credentialHash}</span> }]}
+          items={[{ label: "Linked Credential", value: req.subjectName || req.institution || (req.credentialHash ? "On record" : "—") }]}
         />
       </Section>
 

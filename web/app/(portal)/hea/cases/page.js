@@ -100,7 +100,6 @@ export default function HeaCasesPage() {
     finally { setBusy(null); }
   }
 
-  if (!ready) return null;
 
   // A "case" is any institution with a recorded regulatory history (append-only events[]).
   const cases = institutions.filter((i) => (i.events || []).length > 0);
@@ -125,6 +124,7 @@ export default function HeaCasesPage() {
     return !q || (r.institution + (r.sector || "")).toLowerCase().includes(q.toLowerCase());
   });
   const pager = usePager(rows, 10, [q, actionFilter]);
+  if (!ready) return null;
   const selected = sel === null ? null : cases.find((r) => r.id === sel) || rows[0] || null;
 
   const columns = [

@@ -109,7 +109,6 @@ export default function HeaProgrammesPage() {
     finally { setBusy(null); }
   }
 
-  if (!ready) return null;
 
   const accreditedTotal = institutions.reduce((n, i) => n + (i.accreditedPrograms?.length || 0), 0);
   const kpis = [
@@ -129,6 +128,7 @@ export default function HeaProgrammesPage() {
       (!q || ((r.name || "") + (r.institution || "") + (r.qualificationRef || "")).toLowerCase().includes(q.toLowerCase()))
   );
   const pager = usePager(rows, 10, [q, instFilter, levelFilter]);
+  if (!ready) return null;
   const selected = sel === null ? null : programmes.find((r) => r.id === sel) || rows[0] || null;
 
   const columns = [

@@ -43,8 +43,10 @@ function DetailPanel({ cert, busyDownload, busySubmit, onClose, onDownload, onSu
       <PanelHeader title="Certificate Details" badge={<Badge tone={st.tone} dot>{st.label}</Badge>} onClose={onClose} />
 
       <div className="mb-4">
-        <div className="text-[11px] text-slate-400">Credential Hash</div>
-        <div className="break-all text-[12.5px] font-bold text-slate-900">{cert.credentialHash}</div>
+        <div className="text-[11px] text-slate-400">Certificate</div>
+        <div className="text-[13px] font-bold text-slate-900">
+          {cert.subjectName || "—"} — {cert.qualification || "—"}
+        </div>
       </div>
 
       <SectionCard title="Candidate Profile" className="mb-4">
@@ -53,7 +55,6 @@ function DetailPanel({ cert, busyDownload, busySubmit, onClose, onDownload, onSu
           <div className="min-w-0 leading-tight">
             <div className="text-[13px] font-semibold text-slate-800">{cert.subjectName}</div>
             <div className="mt-0.5 text-[12px] text-slate-500">NRC: {cert.holderNationalId || "—"}</div>
-            <div className="break-all text-[12px] text-slate-500">DID: {cert.holderDID || "—"}</div>
           </div>
         </div>
       </SectionCard>
@@ -66,7 +67,7 @@ function DetailPanel({ cert, busyDownload, busySubmit, onClose, onDownload, onSu
         <KVRow label="ZQF Level" value={cert.zqfLevel ? `ZQF ${cert.zqfLevel}` : "—"} />
         <KVRow
           label="Anchored On-chain"
-          value={cert.anchorTx ? <span className="font-mono text-[11px]">{cert.anchorTx.slice(0, 14)}…</span> : "Not anchored"}
+          value={cert.anchorTx ? "Yes" : "Not anchored"}
         />
         {cert.zaqaRef ? <KVRow label="ZAQA Ref" value={cert.zaqaRef} /> : null}
       </SectionCard>

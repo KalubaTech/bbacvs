@@ -333,7 +333,6 @@ function ValidationInner() {
                   <div className="mt-0.5 text-[13px] font-bold text-blue-600">{cred.qualification || "—"}</div>
                   <div className="mt-0.5 text-[11px] text-slate-500">Type: {cred.credentialType || "—"}</div>
                   <div className="text-[11px] text-slate-500">Issued: {fmtDate(cred.issuedAt)}</div>
-                  <div className="truncate text-[11px] text-slate-500">Hash: {cred.credentialHash}</div>
                 </div>
                 <div className="leading-tight">
                   <Badge tone={status.tone} dot>{status.label}</Badge>
