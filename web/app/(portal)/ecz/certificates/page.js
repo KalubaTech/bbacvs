@@ -196,7 +196,6 @@ export default function EczCertificatesPage() {
       portal="ecz"
       active="certificates"
       title="ECZ Portal – Certificate Register"
-      subtitle="Manage issued certificates, submit them for ZAQA validation and track verification readiness."
       actions={
         <Link
           href="/ecz/classic"

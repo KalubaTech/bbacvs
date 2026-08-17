@@ -152,7 +152,6 @@ export default function HeaDashboardPage() {
       portal="hea"
       active="dashboard"
       title="HEA Portal – Dashboard Overview"
-      subtitle="Real-time overview of higher education regulation, accreditation, compliance and evidence shared with ZAQA."
     >
       <ErrorBanner error={error} onRetry={load} />
 

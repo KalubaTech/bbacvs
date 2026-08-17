@@ -13,7 +13,6 @@ export default function TevetaDisputesPage() {
       portal="teveta"
       active="disputes"
       title="Disputes"
-      subtitle="Credential disputes routed to TEVETA as lead authority — review, decide and track appeals."
     >
       <DisputesWorkspace token={token} role={user.role} mode="authority" />
     </PortalShell>

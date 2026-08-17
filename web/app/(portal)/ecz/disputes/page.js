@@ -15,7 +15,6 @@ export default function EczDisputesPage() {
       portal="ecz"
       active="disputes"
       title="Disputes & Corrections"
-      subtitle="Credential disputes routed to ECZ as lead authority — review, decide and track appeals."
     >
       <DisputesWorkspace token={token} role={user.role} mode="authority" />
     </PortalShell>

@@ -142,7 +142,6 @@ export default function HeaEnforcementPage() {
       portal="hea"
       active="enforcement"
       title="HEA Portal – Enforcement & Sanctions"
-      subtitle="Active suspensions of higher-education institutions. Suspensions are initiated from the Compliance and Institutions workspaces."
       panel={
         selected ? (
           <DetailPanel

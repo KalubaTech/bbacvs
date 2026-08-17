@@ -185,7 +185,6 @@ export default function InstitutionProgrammesPage() {
       portal="institution"
       active="programmes"
       title="Programmes"
-      subtitle="Create programmes and submit them to your regulator for accreditation — approved programmes become the only ones you may issue against."
       actions={
         <>
           <ActionBtn tone="blue" icon="plus" onClick={openCreate}>New programme</ActionBtn>

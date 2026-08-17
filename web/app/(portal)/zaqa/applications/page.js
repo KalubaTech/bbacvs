@@ -252,7 +252,6 @@ export default function ZaqaApplicationsPage() {
       portal="zaqa"
       active="applications"
       title="Case Management"
-      subtitle="All open regulatory work in one place: national validations, disputes, suspensions and revocations."
       panel={panel}
       panelKey={selected?.key}
       panelWidth="w-[440px]"

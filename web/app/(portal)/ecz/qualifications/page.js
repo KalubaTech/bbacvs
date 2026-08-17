@@ -13,7 +13,6 @@ export default function EczQualificationsPage() {
       portal="ecz"
       active="qualifications"
       title="Qualification Registration Applications"
-      subtitle="Review qualification proposals in ECZ's inbox and recommend them for national registration."
     >
       <QualificationsWorkflow token={token} role={user.role} mode="authority" />
     </PortalShell>

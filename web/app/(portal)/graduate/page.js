@@ -223,7 +223,6 @@ export default function GraduateDashboardPage() {
       portal="graduate"
       active="dashboard"
       title={`Welcome back, ${firstName}!`}
-      subtitle="Here's what's happening with your academic credentials."
       panel={
         <DetailPanel
           user={user}

@@ -270,8 +270,24 @@ export const api = {
   // NQF knowledge base (public reads)
   nqfFrameworks: () => request(`/api/nqf/frameworks`),
   nqfCurrentFramework: () => request(`/api/nqf/frameworks/current`),
+  nqfFramework: (code) => request(`/api/nqf/frameworks/${encodeURIComponent(code)}`),
   nqfLevel: (level) => request(`/api/nqf/levels/${level}`),
   nqfProgression: () => request(`/api/nqf/progression`),
+
+  // NQF configuration (ZAQA)
+  nqfUpdateLevel: (token, level, body) =>
+    request(`/api/nqf/levels/${level}`, { token, method: "PATCH", body: JSON.stringify(body) }),
+  nqfCreateFramework: (token, body) =>
+    request(`/api/nqf/frameworks`, { token, method: "POST", body: JSON.stringify(body) }),
+  nqfActivateFramework: (token, code, effectiveFrom) =>
+    request(`/api/nqf/frameworks/${encodeURIComponent(code)}/activate`, {
+      token, method: "POST", body: JSON.stringify(effectiveFrom ? { effectiveFrom } : {}),
+    }),
+  nqfUpdateFramework: (token, code, body) =>
+    request(`/api/nqf/frameworks/${encodeURIComponent(code)}`, { token, method: "PATCH", body: JSON.stringify(body) }),
+  nqfPolicies: (token) => request(`/api/nqf/policies`, { token }),
+  nqfSetPolicy: (token, body) =>
+    request(`/api/nqf/policies`, { token, method: "POST", body: JSON.stringify(body) }),
 
   // credential digitization applications
   approvedInstitutions: () => request(`/api/institutions`),

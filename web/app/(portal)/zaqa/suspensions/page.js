@@ -245,7 +245,6 @@ export default function ZaqaSuspensionsPage() {
       portal="zaqa"
       active="suspensions"
       title="Suspensions"
-      subtitle="Temporarily withdrawn credentials pending investigation — reinstate or escalate to revocation."
       actions={
         <ActionBtn tone="navy" icon="pause" onClick={() => setSuspendOpen(true)}>
           Suspend a Credential

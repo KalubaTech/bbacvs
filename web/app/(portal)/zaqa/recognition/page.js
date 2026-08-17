@@ -12,7 +12,6 @@ export default function ZaqaRecognitionPage() {
       portal="zaqa"
       active="recognition"
       title="RPL & Credit Transfer"
-      subtitle="Recognition of prior learning, credit transfer, progression, foreign qualification and micro-credential cases."
     >
       <RecognitionWorkspace token={token} role={user.role} mode="authority" />
     </PortalShell>

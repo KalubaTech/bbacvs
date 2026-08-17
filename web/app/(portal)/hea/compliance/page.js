@@ -187,7 +187,6 @@ export default function HeaCompliancePage() {
       portal="hea"
       active="compliance"
       title="HEA Portal – Compliance Monitoring"
-      subtitle="Monitor accredited institutions' standing, programme portfolios and credential issuance; suspend or reinstate issuing rights."
       panel={
         selected ? (
           <DetailPanel

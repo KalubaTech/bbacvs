@@ -13,7 +13,6 @@ export default function InstitutionNotificationsPage() {
       portal="institution"
       active="notifications"
       title="Notifications"
-      subtitle="Regulatory updates, application activity, and ZAQA decisions for your institution."
     >
       <NotificationsPanel token={token} />
     </PortalShell>

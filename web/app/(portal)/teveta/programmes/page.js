@@ -261,7 +261,6 @@ export default function TevetaProgrammesPage() {
       portal="teveta"
       active="programmes"
       title="TEVETA Portal – Programme Accreditation"
-      subtitle="Accredit programme applications submitted by TEVET providers and manage the provider registry."
       panel={
         selectedProg ? (
           <ProgrammePanel

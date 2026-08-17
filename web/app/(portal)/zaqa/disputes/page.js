@@ -12,7 +12,6 @@ export default function ZaqaDisputesPage() {
       portal="zaqa"
       active="disputes"
       title="Disputes & Appeals"
-      subtitle="Category-routed dispute workflow: review evidence, decide cases and rule on appeals as the national authority."
     >
       <DisputesWorkspace token={token} role={user.role} mode="authority" />
     </PortalShell>

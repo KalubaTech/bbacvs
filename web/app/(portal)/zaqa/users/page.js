@@ -174,7 +174,6 @@ export default function ZaqaUsersPage() {
       portal="zaqa"
       active="users"
       title="User Administration"
-      subtitle="Manage the accounts your authority is responsible for on the BBACVS platform."
       actions={
         <ActionBtn tone="navy" icon="plus" onClick={() => { setCreateError(null); setCreateOpen(true); }}>
           Add New User

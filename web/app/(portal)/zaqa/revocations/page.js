@@ -209,7 +209,6 @@ export default function ZaqaRevocationsPage() {
       portal="zaqa"
       active="revocations"
       title="Revocations"
-      subtitle="Credentials revoked on-chain by ZAQA — every future verification immediately reflects REVOKED."
       actions={
         <ActionBtn tone="navy" icon="plus" onClick={() => setRevokeOpen(true)}>
           New Revocation

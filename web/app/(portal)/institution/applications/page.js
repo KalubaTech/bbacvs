@@ -260,7 +260,6 @@ export default function InstitutionApplicationsPage() {
       portal="institution"
       active="applications"
       title="Graduate Applications"
-      subtitle="Digitisation requests from graduates — screen, verify against institutional records, and issue or reject."
       actions={
         <>
           <ToolButton icon="download" onClick={() => exportCSV("graduate-applications", columns, rows)}>

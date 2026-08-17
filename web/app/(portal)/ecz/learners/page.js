@@ -183,7 +183,6 @@ export default function EczLearnersPage() {
       portal="ecz"
       active="learners"
       title="ECZ Portal – Learner Records"
-      subtitle="One record per learner, derived from ECZ-issued certificates — identity, credential count and ZAQA sync state."
       panel={selected ? <DetailPanel learner={selected} onClose={() => setSel(null)} /> : null}
       panelKey={selected?.key}
       panelWidth="w-[380px]"

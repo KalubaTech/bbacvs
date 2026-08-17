@@ -13,7 +13,6 @@ export default function InstitutionQualificationsPage() {
       portal="institution"
       active="qualifications"
       title="Qualification Proposals"
-      subtitle="Propose qualification designs for national registration and track them through authority review to the ZAQA register."
     >
       <QualificationsWorkflow token={token} role={user.role} mode="issuer" />
     </PortalShell>

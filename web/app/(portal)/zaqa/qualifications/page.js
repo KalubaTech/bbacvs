@@ -12,7 +12,6 @@ export default function ZaqaQualificationsPage() {
       portal="zaqa"
       active="qualifications"
       title="Qualification Registration"
-      subtitle="Decide recommended qualification proposals and manage the registered national register: amendments, lifecycle and history."
     >
       <QualificationsWorkflow token={token} role={user.role} mode="zaqa" />
     </PortalShell>

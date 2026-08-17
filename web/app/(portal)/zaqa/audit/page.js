@@ -139,7 +139,6 @@ export default function ZaqaAuditPage() {
       portal="zaqa"
       active="audit"
       title="Audit & History"
-      subtitle="The regulatory accountability trail and the immutable on-chain issuance ledger, with CSV reports."
     >
       <StatRow cols={4}>
         <StatCard icon="clipboard" iconTone="softblue" label="Activity Records" value={loadingAct ? "…" : activity.length} sub="Accountability trail" />

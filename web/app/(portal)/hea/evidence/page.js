@@ -201,7 +201,6 @@ export default function HeaEvidencePage() {
       portal="hea"
       active="evidence"
       title="HEA Portal – Evidence for ZAQA Validation"
-      subtitle="Read-only oversight of higher-education credentials and their national validation state. Validation decisions rest with ZAQA."
       panel={
         selected ? (
           <DetailPanel key={selected.credentialHash} cred={selected} onClose={() => setSel(null)} />

@@ -176,7 +176,6 @@ export default function TevetaCertificationPage() {
       portal="teveta"
       active="certification"
       title="TEVETA Portal – Certification Records"
-      subtitle="Sector-wide register of TEVET credentials issued by accredited providers. TEVETA monitors — issuance stays with the providers."
       actions={
         <ToolButton icon="download" onClick={() => exportCSV("tevet-certification-records", csvCols, rows)}>
           Export Records

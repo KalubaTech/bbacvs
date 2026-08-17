@@ -177,7 +177,6 @@ export default function HeaUsersPage() {
       portal="hea"
       active="users"
       title="HEA Portal – User Management & Roles"
-      subtitle="Manage HEA user accounts and roles across the HEA Portal."
       actions={
         <ActionBtn tone="navy" icon="plus" onClick={() => setModalOpen(true)}>
           Add New User

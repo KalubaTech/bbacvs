@@ -13,7 +13,6 @@ export default function GraduateNotificationsPage() {
       portal="graduate"
       active="notifications"
       title="Notifications"
-      subtitle="Updates about your credentials, applications, and verification activity."
     >
       <NotificationsPanel token={token} />
     </PortalShell>

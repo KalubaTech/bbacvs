@@ -151,7 +151,6 @@ export default function TevetaQualificationsPage() {
       portal="teveta"
       active="qualifications"
       title="TEVETA Portal – Qualifications"
-      subtitle="Review qualification registration applications and browse the national TEVET register. Institutions propose qualifications; TEVETA recommends them to ZAQA."
     >
       <div className="mb-4">
         <TabBar

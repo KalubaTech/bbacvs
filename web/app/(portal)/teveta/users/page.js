@@ -156,7 +156,6 @@ export default function TevetaUsersPage() {
       portal="teveta"
       active="users"
       title="TEVETA Portal – Users & Officers"
-      subtitle="Manage TEVETA officer accounts for the TEVETA Portal."
       panel={
         <CreateUserPanel
           form={form}

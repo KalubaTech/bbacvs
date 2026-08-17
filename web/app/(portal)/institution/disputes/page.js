@@ -13,7 +13,6 @@ export default function InstitutionDisputesPage() {
       portal="institution"
       active="disputes"
       title="Disputes & Corrections"
-      subtitle="Dispute cases routed to your institution — review, request evidence, and record decisions."
     >
       <DisputesWorkspace token={token} role={user.role} mode="authority" />
     </PortalShell>

@@ -296,7 +296,6 @@ function ValidationInner() {
       portal="zaqa"
       active="validation"
       title="Validation Review"
-      subtitle="Automated qualification validation workflow with explainable, one-click ZAQA decisions."
       actions={
         <Link
           href="/zaqa/applications"
@@ -316,7 +315,7 @@ function ValidationInner() {
           No credentials submitted for validation yet.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
+        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
           {/* Left column */}
           <div className="space-y-4">
             <SectionCard title="Applicant & Credential Summary" pad="p-4">
@@ -475,8 +474,8 @@ function ValidationInner() {
             </div>
           </div>
 
-          {/* Right mini-column */}
-          <div className="space-y-4">
+          {/* Right mini-column (stacks below the detail until 2xl) */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:block 2xl:space-y-4">
             <SectionCard title="Decision Summary" pad="p-4">
               {report ? (
                 <>

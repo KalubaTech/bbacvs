@@ -85,7 +85,6 @@ export default function ZaqaDashboardPage() {
       portal="zaqa"
       active="dashboard"
       title="National Oversight Dashboard"
-      subtitle="Live view of the national credential ecosystem: institutions, credentials, validation states and platform accounts."
     >
       <ErrorBanner error={error} onRetry={load} />
 

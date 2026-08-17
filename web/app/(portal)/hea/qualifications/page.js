@@ -12,7 +12,6 @@ export default function HeaQualificationsPage() {
       portal="hea"
       active="qualifications"
       title="Qualification Registration Applications"
-      subtitle="Review qualification proposals from higher-education institutions and recommend them to ZAQA."
     >
       <QualificationsWorkflow token={token} role={user.role} mode="authority" />
     </PortalShell>

@@ -119,7 +119,6 @@ export default function ZaqaRegisterPage() {
       portal="zaqa"
       active="register"
       title="National Register"
-      subtitle="Governance view of the National Qualifications Register — every lifecycle status, with full version history."
     >
       <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <SearchBox

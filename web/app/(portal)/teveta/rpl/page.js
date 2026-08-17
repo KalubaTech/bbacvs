@@ -14,7 +14,6 @@ export default function TevetaRplPage() {
       portal="teveta"
       active="rpl"
       title="RPL Applications"
-      subtitle="Recognition of Prior Learning casework with NQF descriptor analysis."
     >
       <RecognitionWorkspace token={token} role={user.role} mode="authority" />
     </PortalShell>

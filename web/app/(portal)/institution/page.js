@@ -190,7 +190,6 @@ export default function InstitutionDashboardPage() {
       portal="institution"
       active="dashboard"
       title="Institution Portal – Dashboard Overview"
-      subtitle={`Welcome back, ${user.name || user.email}. Here's an overview of your institution's BBACVS activity.`}
       actions={<ToolButton icon="refresh" aria-label="Refresh" onClick={load} />}
       panel={<AlertsPanel openApps={openApps} drafts={drafts} corrections={corrections} />}
       panelWidth="w-[380px]"

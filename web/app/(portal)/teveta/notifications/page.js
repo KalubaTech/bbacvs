@@ -13,7 +13,6 @@ export default function TevetaNotificationsPage() {
       portal="teveta"
       active="notifications"
       title="Notifications"
-      subtitle="Regulatory updates and alerts for your TEVETA seat."
     >
       <NotificationsPanel token={token} />
     </PortalShell>

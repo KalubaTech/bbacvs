@@ -12,7 +12,6 @@ export default function ZaqaNotificationsPage() {
       portal="zaqa"
       active="notifications"
       title="Notifications"
-      subtitle="In-app notifications about decisions, submissions and cases that involve your authority."
     >
       <NotificationsPanel token={token} />
     </PortalShell>

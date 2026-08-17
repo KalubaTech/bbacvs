@@ -117,7 +117,6 @@ export default function GraduateVerificationPage() {
       portal="graduate"
       active="verification"
       title="Verification Activity"
-      subtitle="Every time someone checks one of your credentials — online or by scanning your signed QR — it is recorded here."
       actions={
         <>
           <ToolButton icon="download" onClick={() => exportCSV("verification-activity", columns, rows)}>

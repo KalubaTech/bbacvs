@@ -238,7 +238,6 @@ export default function TevetaDashboardPage() {
       portal="teveta"
       active="dashboard"
       title="TEVETA Portal – Regulatory Dashboard"
-      subtitle="Provider registration, accreditation status and TEVET credential issuance at a glance."
       panel={
         selected ? (
           <DetailPanel

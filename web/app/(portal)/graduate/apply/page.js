@@ -358,7 +358,6 @@ export default function GraduateApplyPage() {
       portal="graduate"
       active="apply"
       title="Apply for Credential"
-      subtitle="Digitise an existing paper qualification, or open a recognition case (RPL, credit transfer, foreign qualification, micro-credential)."
     >
       <div className="mb-5">
         <TabBar tabs={TABS} active={tab} onChange={setTab} accent="border-emerald-600 text-emerald-700" />

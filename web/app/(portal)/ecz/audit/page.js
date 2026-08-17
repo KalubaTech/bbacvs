@@ -96,7 +96,6 @@ export default function EczAuditPage() {
       portal="ecz"
       active="audit"
       title="ECZ Portal – Audit & Reports"
-      subtitle="Accountability trail across ECZ's BBACVS integration — who changed what, and when."
       actions={
         <ToolButton icon="download" onClick={() => exportCSV("ecz-audit-trail", csvCols, rows)}>
           Export CSV

@@ -215,7 +215,6 @@ export default function EczRequestsPage() {
       portal="ecz"
       active="requests"
       title="ECZ Portal – ZAQA Verification Requests"
-      subtitle="Verification requests and corrections routed to ECZ through BBACVS. Full casework lives in Disputes & Corrections."
       actions={
         <ToolButton icon="download" onClick={() => exportCSV("ecz-verification-requests", csvCols, rows)}>
           Export Queue

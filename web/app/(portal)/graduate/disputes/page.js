@@ -13,7 +13,6 @@ export default function GraduateDisputesPage() {
       portal="graduate"
       active="disputes"
       title="Corrections & Disputes"
-      subtitle="Raise a dispute about a credential, follow the case timeline, and appeal a decision if needed."
     >
       <DisputesWorkspace token={token} role={user.role} mode="holder" />
     </PortalShell>

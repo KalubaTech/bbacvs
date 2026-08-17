@@ -324,7 +324,6 @@ export default function HeaInstitutionsPage() {
       portal="hea"
       active="institutions"
       title="HEA Portal – Institution Registration & Accreditation"
-      subtitle="Onboard new institutions and manage accreditation workflows in line with the Higher Education Act No. 4 of 2013."
       actions={
         <ActionBtn tone="navy" icon="plus" onClick={() => setRegisterOpen(true)}>
           Register New Institution

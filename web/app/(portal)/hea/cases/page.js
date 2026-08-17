@@ -159,7 +159,6 @@ export default function HeaCasesPage() {
       portal="hea"
       active="cases"
       title="HEA Portal – Regulatory Cases"
-      subtitle="The historical record of every regulatory action taken against higher-education institutions — a visible, append-only audit trail."
       panel={
         selected ? (
           <DetailPanel

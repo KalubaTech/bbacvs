@@ -284,7 +284,6 @@ export default function InstitutionEvidencePage() {
       portal="institution"
       active="evidence"
       title="Evidence & ZAQA Requests"
-      subtitle="The trust record of every credential you issued — submit drafts to ZAQA, resolve correction requests, and issue corrected credentials."
       actions={
         <>
           <ToolButton icon="award" onClick={downloadAccreditation} disabled={certBusy} className={certBusy ? "opacity-50" : ""}>

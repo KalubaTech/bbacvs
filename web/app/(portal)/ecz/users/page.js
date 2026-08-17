@@ -138,7 +138,6 @@ export default function EczUsersPage() {
       portal="ecz"
       active="users"
       title="ECZ Portal – User Management & Roles"
-      subtitle="Manage ECZ portal user accounts and roles."
       actions={
         <>
           <ActionBtn tone="darkgreen" icon="plus" onClick={() => { setFormError(null); setModalOpen(true); }}>

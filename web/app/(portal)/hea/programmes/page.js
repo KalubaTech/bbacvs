@@ -148,7 +148,6 @@ export default function HeaProgrammesPage() {
       portal="hea"
       active="programmes"
       title="HEA Portal – Programme Accreditation Review"
-      subtitle="Review and decide on degree, diploma and certificate programmes submitted for accreditation."
       panel={
         selected ? (
           <DetailPanel

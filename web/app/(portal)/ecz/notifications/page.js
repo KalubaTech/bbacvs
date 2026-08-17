@@ -13,7 +13,6 @@ export default function EczNotificationsPage() {
       portal="ecz"
       active="notifications"
       title="Notifications"
-      subtitle="Regulatory updates and alerts for your ECZ seat."
     >
       <NotificationsPanel token={token} />
     </PortalShell>

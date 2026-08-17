@@ -126,7 +126,6 @@ export default function EczDashboardPage() {
       portal="ecz"
       active="dashboard"
       title="ECZ Portal – Dashboard Overview"
-      subtitle="Live overview of ECZ-issued certificates, ZAQA validation and institution approvals."
     >
       <StatRow cols={6}>
         <StatCard icon="users" iconTone="softgreen" label="Learner Records" value={String(learners)} sub="Distinct certificate holders" />
