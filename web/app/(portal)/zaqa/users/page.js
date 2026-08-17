@@ -181,9 +181,9 @@ export default function ZaqaUsersPage() {
       }
     >
       <StatRow cols={4}>
-        <StatCard icon="users" iconTone="softblue" label="Total Users" value={loading ? "…" : users.length} sub="Accounts you manage" />
-        <StatCard icon="clock" iconTone="amber" label="Added This Month" value={loading ? "…" : addedThisMonth} sub="New accounts" />
-        <StatCard icon="user" iconTone="purple" label="Role Groups" value={loading ? "…" : Object.keys(roleCounts).length} sub="Roles in use" />
+        <StatCard icon="users" iconTone="softblue" label="Total Users" value={loading ? "…" : users.length} />
+        <StatCard icon="clock" iconTone="amber" label="Added This Month" value={loading ? "…" : addedThisMonth} />
+        <StatCard icon="user" iconTone="purple" label="Role Groups" value={loading ? "…" : Object.keys(roleCounts).length} />
         <StatCard icon="shieldCheck" iconTone="softgreen" label="Roles You May Create" value={loading ? "…" : manageableRoles.length} sub={manageableRoles.join(", ").toUpperCase()} />
       </StatRow>
 

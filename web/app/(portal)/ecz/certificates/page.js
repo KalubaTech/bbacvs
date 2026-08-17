@@ -221,11 +221,11 @@ export default function EczCertificatesPage() {
       panelWidth="w-[400px]"
     >
       <StatRow cols={5}>
-        <StatCard icon="file" iconTone="softgreen" label="Certificates Issued" value={String(creds.length)} sub="All ECZ records" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="ZAQA Validated" value={String(validated)} sub="Ready for verification" />
-        <StatCard icon="clock" iconTone="amber" label="Pending Issuance" value={String(pendingIssue)} sub="Awaiting anchoring" />
-        <StatCard icon="send" iconTone="softblue" label="Awaiting ZAQA" value={String(awaitingZaqa)} sub="In validation queue" />
-        <StatCard icon="revoke" iconTone="softred" label="Revoked Records" value={String(revoked)} sub="On-chain revocations" />
+        <StatCard icon="file" iconTone="softgreen" label="Certificates Issued" value={String(creds.length)} />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="ZAQA Validated" value={String(validated)} />
+        <StatCard icon="clock" iconTone="amber" label="Pending Issuance" value={String(pendingIssue)} />
+        <StatCard icon="send" iconTone="softblue" label="Awaiting ZAQA" value={String(awaitingZaqa)} />
+        <StatCard icon="revoke" iconTone="softred" label="Revoked Records" value={String(revoked)} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

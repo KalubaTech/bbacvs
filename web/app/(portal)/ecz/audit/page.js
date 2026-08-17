@@ -103,11 +103,11 @@ export default function EczAuditPage() {
       }
     >
       <StatRow cols={5}>
-        <StatCard icon="shield" iconTone="softblue" label="Audit Events" value={String(events.length)} sub="Latest 200 shown" />
-        <StatCard icon="users" iconTone="purple" label="Distinct Actors" value={String(actors)} sub="Users with logged actions" />
-        <StatCard icon="file" iconTone="softgreen" label="Credential Events" value={String(credentialEvents)} sub="Issue / submit / revoke" />
-        <StatCard icon="gavel" iconTone="amber" label="Dispute Events" value={String(disputeEvents)} sub="Opened / resolved" />
-        <StatCard icon="shieldCheck" iconTone="softgreen" label="User Management Events" value={String(userEvents)} sub="Accounts added / removed" />
+        <StatCard icon="shield" iconTone="softblue" label="Audit Events" value={String(events.length)} />
+        <StatCard icon="users" iconTone="purple" label="Distinct Actors" value={String(actors)} />
+        <StatCard icon="file" iconTone="softgreen" label="Credential Events" value={String(credentialEvents)} />
+        <StatCard icon="gavel" iconTone="amber" label="Dispute Events" value={String(disputeEvents)} />
+        <StatCard icon="shieldCheck" iconTone="softgreen" label="User Management Events" value={String(userEvents)} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

@@ -97,22 +97,18 @@ export default function ZaqaDashboardPage() {
         <StatCard
           icon="file" iconTone="purple" label="Credentials Issued"
           value={loading ? "…" : String(totals.credentials ?? 0)}
-          sub="Anchored on-chain"
         />
         <StatCard
           icon="checkCircle" iconTone="softgreen" label="Nationally Validated"
           value={loading ? "…" : String(totals.validated ?? 0)}
-          sub="Carry a ZAQA reference"
         />
         <StatCard
           icon="queue" iconTone="amber" label="Pending Review"
           value={loading ? "…" : String(pendingCount)}
-          sub="In the validation queue"
         />
         <StatCard
           icon="users" iconTone="softblue" label="Platform Accounts"
           value={loading ? "…" : String(accounts)}
-          sub="Across all roles"
         />
       </StatRow>
 

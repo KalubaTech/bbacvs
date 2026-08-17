@@ -255,10 +255,10 @@ export default function ZaqaSuspensionsPage() {
       panelWidth="w-[420px]"
     >
       <StatRow cols={4}>
-        <StatCard icon="pause" iconTone="softred" label="Active Suspensions" value={loading ? "…" : cases.length} sub="Currently suspended" />
-        <StatCard icon="clock" iconTone="amber" label="Suspended This Month" value={loading ? "…" : thisMonth} sub="New this calendar month" />
-        <StatCard icon="bank" iconTone="purple" label="Institutions Affected" value={loading ? "…" : institutionsAffected} sub="With a suspended credential" />
-        <StatCard icon="shieldCheck" iconTone="softgreen" label="Eligible To Suspend" value={loading ? "…" : suspendable.length} sub="Active credentials in scope" />
+        <StatCard icon="pause" iconTone="softred" label="Active Suspensions" value={loading ? "…" : cases.length} />
+        <StatCard icon="clock" iconTone="amber" label="Suspended This Month" value={loading ? "…" : thisMonth} />
+        <StatCard icon="bank" iconTone="purple" label="Institutions Affected" value={loading ? "…" : institutionsAffected} />
+        <StatCard icon="shieldCheck" iconTone="softgreen" label="Eligible To Suspend" value={loading ? "…" : suspendable.length} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

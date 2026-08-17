@@ -225,11 +225,11 @@ export default function EczRequestsPage() {
       panelWidth="w-[400px]"
     >
       <StatRow cols={5}>
-        <StatCard icon="inbox" iconTone="softgreen" label="Open Requests" value={String(open)} sub="Awaiting ECZ action" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="Closed Cases" value={String(resolved)} sub="Resolved / decided" />
-        <StatCard icon="help" iconTone="amber" label="Total Cases" value={String(disputes.length)} sub="Routed to ECZ" />
-        <StatCard icon="alert" iconTone="softred" label="Issue Categories" value={String(categories)} sub="Distinct dispute types" />
-        <StatCard icon="clock" iconTone="softblue" label="Average Turnaround" value={avgDays} sub="Open to resolution" />
+        <StatCard icon="inbox" iconTone="softgreen" label="Open Requests" value={String(open)} />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="Closed Cases" value={String(resolved)} />
+        <StatCard icon="help" iconTone="amber" label="Total Cases" value={String(disputes.length)} />
+        <StatCard icon="alert" iconTone="softred" label="Issue Categories" value={String(categories)} />
+        <StatCard icon="clock" iconTone="softblue" label="Average Turnaround" value={avgDays} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

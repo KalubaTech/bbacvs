@@ -186,11 +186,11 @@ export default function TevetaCertificationPage() {
       panelWidth="w-[400px]"
     >
       <StatRow cols={5}>
-        <StatCard icon="file" iconTone="softblue" label="Total Records" value={String(creds.length)} sub="Latest 200 shown" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="Active" value={String(active)} sub="Lifecycle status: active" />
-        <StatCard icon="shieldCheck" iconTone="purple" label="ZAQA Validated" value={String(validated)} sub="Nationally validated" />
-        <StatCard icon="alert" iconTone="amber" label="Flagged / Disputed" value={String(flagged)} sub="Needs regulator attention" />
-        <StatCard icon="revoke" iconTone="softred" label="Revoked" value={String(revoked)} sub="On-chain revocations" />
+        <StatCard icon="file" iconTone="softblue" label="Total Records" value={String(creds.length)} />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="Active" value={String(active)} />
+        <StatCard icon="shieldCheck" iconTone="purple" label="ZAQA Validated" value={String(validated)} />
+        <StatCard icon="alert" iconTone="amber" label="Flagged / Disputed" value={String(flagged)} />
+        <StatCard icon="revoke" iconTone="softred" label="Revoked" value={String(revoked)} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

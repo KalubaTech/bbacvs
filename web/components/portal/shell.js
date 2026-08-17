@@ -215,20 +215,6 @@ export default function PortalShell({
             </div>
           ))}
         </nav>
-        <div className="p-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3.5">
-            <div className="flex items-start gap-2.5">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300">
-                <Icon name="shieldCheck" className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 text-[11px] leading-snug">
-                <div className="font-semibold text-white">{t.org.title}</div>
-                {t.org.sub && <div className="mt-0.5 text-slate-300/80">{t.org.sub}</div>}
-                <div className="mt-1.5 border-t border-white/10 pt-1.5 text-slate-300/70">{t.org.tagline}</div>
-              </div>
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* Right of sidebar */}

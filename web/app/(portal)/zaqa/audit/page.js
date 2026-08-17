@@ -141,10 +141,10 @@ export default function ZaqaAuditPage() {
       title="Audit & History"
     >
       <StatRow cols={4}>
-        <StatCard icon="clipboard" iconTone="softblue" label="Activity Records" value={loadingAct ? "…" : activity.length} sub="Accountability trail" />
-        <StatCard icon="clock" iconTone="softgreen" label="Actions Today" value={loadingAct ? "…" : todayCount} sub="Recorded today" />
-        <StatCard icon="shieldCheck" iconTone="amber" label="ZAQA Decisions" value={loadingAct ? "…" : zaqaActions} sub="Validation & enforcement actions" />
-        <StatCard icon="link" iconTone="purple" label="On-chain Events" value={loadingChain ? "…" : events.length} sub="Issuance anchors" />
+        <StatCard icon="clipboard" iconTone="softblue" label="Activity Records" value={loadingAct ? "…" : activity.length} />
+        <StatCard icon="clock" iconTone="softgreen" label="Actions Today" value={loadingAct ? "…" : todayCount} />
+        <StatCard icon="shieldCheck" iconTone="amber" label="ZAQA Decisions" value={loadingAct ? "…" : zaqaActions} />
+        <StatCard icon="link" iconTone="purple" label="On-chain Events" value={loadingChain ? "…" : events.length} />
       </StatRow>
 
       {activity.length > 0 && (

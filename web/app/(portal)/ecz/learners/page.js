@@ -188,11 +188,11 @@ export default function EczLearnersPage() {
       panelWidth="w-[380px]"
     >
       <StatRow cols={5}>
-        <StatCard icon="users" iconTone="softgreen" label="Learners" value={String(learners.length)} sub="Distinct certificate holders" />
-        <StatCard icon="file" iconTone="softblue" label="Certificates" value={String(creds.length)} sub="All ECZ-issued records" />
+        <StatCard icon="users" iconTone="softgreen" label="Learners" value={String(learners.length)} />
+        <StatCard icon="file" iconTone="softblue" label="Certificates" value={String(creds.length)} />
         <StatCard icon="checkCircle" iconTone="softgreen" label="Verified Identities" value={String(withDid)} sub={learners.length ? `${((withDid / learners.length) * 100).toFixed(1)}% with DID` : "—"} />
-        <StatCard icon="shieldCheck" iconTone="purple" label="With Active Certificate" value={String(withActive)} sub="At least one active record" />
-        <StatCard icon="alertCircle" iconTone="amber" label="Missing NRC" value={String(missingNrc)} sub="Identity data incomplete" />
+        <StatCard icon="shieldCheck" iconTone="purple" label="With Active Certificate" value={String(withActive)} />
+        <StatCard icon="alertCircle" iconTone="amber" label="Missing NRC" value={String(missingNrc)} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

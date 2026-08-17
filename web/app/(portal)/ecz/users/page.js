@@ -150,9 +150,9 @@ export default function EczUsersPage() {
       }
     >
       <StatRow cols={4}>
-        <StatCard icon="users" iconTone="softgreen" label="Total Users" value={String(users.length)} sub="Manageable by ECZ" />
-        <StatCard icon="users" iconTone="purple" label="Role Groups" value={String(roleEntries.length)} sub="Across ECZ Portal" />
-        <StatCard icon="clock" iconTone="amber" label="Newest Account" value={newest} sub="Most recently created" />
+        <StatCard icon="users" iconTone="softgreen" label="Total Users" value={String(users.length)} />
+        <StatCard icon="users" iconTone="purple" label="Role Groups" value={String(roleEntries.length)} />
+        <StatCard icon="clock" iconTone="amber" label="Newest Account" value={newest} />
         <StatCard icon="shield" iconTone="softblue" label="Your Account" value={(user.role || "ecz").toUpperCase()} sub={user.email} />
       </StatRow>
 

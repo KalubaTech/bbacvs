@@ -285,11 +285,11 @@ export default function TevetaProgrammesPage() {
       panelWidth="w-[420px]"
     >
       <StatRow cols={5}>
-        <StatCard icon="clipboard" iconTone="orange" label="Programme Applications" value={String(progs.length)} sub="Awaiting accreditation" />
-        <StatCard icon="bank" iconTone="softblue" label="Registered Providers" value={String(insts.length)} sub="TEVET institution registry" />
-        <StatCard icon="clock" iconTone="amber" label="Providers Pending" value={String(counts.pending)} sub="Awaiting TEVETA decision" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="Approved Providers" value={String(counts.approved)} sub="Accredited to issue" />
-        <StatCard icon="shieldCheck" iconTone="purple" label="On-chain Authorised" value={String(counts.onChain)} sub="GovernanceSafe authorised" />
+        <StatCard icon="clipboard" iconTone="orange" label="Programme Applications" value={String(progs.length)} />
+        <StatCard icon="bank" iconTone="softblue" label="Registered Providers" value={String(insts.length)} />
+        <StatCard icon="clock" iconTone="amber" label="Providers Pending" value={String(counts.pending)} />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="Approved Providers" value={String(counts.approved)} />
+        <StatCard icon="shieldCheck" iconTone="purple" label="On-chain Authorised" value={String(counts.onChain)} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

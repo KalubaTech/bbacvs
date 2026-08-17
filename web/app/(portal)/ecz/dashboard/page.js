@@ -128,11 +128,11 @@ export default function EczDashboardPage() {
       title="ECZ Portal – Dashboard Overview"
     >
       <StatRow cols={6}>
-        <StatCard icon="users" iconTone="softgreen" label="Learner Records" value={String(learners)} sub="Distinct certificate holders" />
-        <StatCard icon="file" iconTone="softblue" label="Certificates Issued" value={String(creds.length)} sub="All ECZ-issued records" />
+        <StatCard icon="users" iconTone="softgreen" label="Learner Records" value={String(learners)} />
+        <StatCard icon="file" iconTone="softblue" label="Certificates Issued" value={String(creds.length)} />
         <StatCard icon="shieldCheck" iconTone="softgreen" label="ZAQA Validated" value={String(validated)} sub={creds.length ? `${((validated / creds.length) * 100).toFixed(1)}% of certificates` : "No certificates yet"} />
-        <StatCard icon="clock" iconTone="amber" label="Awaiting ZAQA" value={String(pendingZaqa)} sub="In national validation queue" />
-        <StatCard icon="alert" iconTone="softred" label="Open Disputes" value={String(openDisputes)} sub="Routed to ECZ" />
+        <StatCard icon="clock" iconTone="amber" label="Awaiting ZAQA" value={String(pendingZaqa)} />
+        <StatCard icon="alert" iconTone="softred" label="Open Disputes" value={String(openDisputes)} />
         <StatCard icon="bank" iconTone="purple" label="Institutions" value={String(institutions.length)} sub={`${pendingInst.length} awaiting approval`} />
       </StatRow>
 

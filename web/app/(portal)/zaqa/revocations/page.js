@@ -219,10 +219,10 @@ export default function ZaqaRevocationsPage() {
       panelWidth="w-[420px]"
     >
       <StatRow cols={4}>
-        <StatCard icon="revoke" iconTone="softred" label="Revoked Credentials" value={loading ? "…" : cases.length} sub="Revoked on-chain" />
-        <StatCard icon="alert" iconTone="softred" label="Fraud Revocations" value={loading ? "…" : fraudCount} sub="Reason code 2" />
-        <StatCard icon="refresh" iconTone="softblue" label="Superseded" value={loading ? "…" : supersededCount} sub="Replaced by a corrected credential" />
-        <StatCard icon="shieldCheck" iconTone="softgreen" label="Active Credentials" value={loading ? "…" : revocable.length} sub="Currently in good standing" />
+        <StatCard icon="revoke" iconTone="softred" label="Revoked Credentials" value={loading ? "…" : cases.length} />
+        <StatCard icon="alert" iconTone="softred" label="Fraud Revocations" value={loading ? "…" : fraudCount} />
+        <StatCard icon="refresh" iconTone="softblue" label="Superseded" value={loading ? "…" : supersededCount} />
+        <StatCard icon="shieldCheck" iconTone="softgreen" label="Active Credentials" value={loading ? "…" : revocable.length} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

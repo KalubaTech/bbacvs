@@ -129,10 +129,10 @@ export default function GraduateVerificationPage() {
       <ErrorBanner error={error} onRetry={load} />
 
       <StatRow cols={4}>
-        <StatCard icon="shieldCheck" iconTone="softblue" label="Total Verification Checks" value={String(stats.total)} sub="Across all your credentials" />
-        <StatCard icon="calendar" iconTone="softgreen" label="This Month" value={String(stats.thisMonth)} sub="Since the 1st" />
-        <StatCard icon="link" iconTone="purple" label="Online Checks" value={String(stats.online)} sub="Via the verify page" />
-        <StatCard icon="qr" iconTone="amber" label="Offline QR Scans" value={String(stats.offline)} sub="Signed QR verification" />
+        <StatCard icon="shieldCheck" iconTone="softblue" label="Total Verification Checks" value={String(stats.total)} />
+        <StatCard icon="calendar" iconTone="softgreen" label="This Month" value={String(stats.thisMonth)} />
+        <StatCard icon="link" iconTone="purple" label="Online Checks" value={String(stats.online)} />
+        <StatCard icon="qr" iconTone="amber" label="Offline QR Scans" value={String(stats.offline)} />
       </StatRow>
 
       <SectionCard

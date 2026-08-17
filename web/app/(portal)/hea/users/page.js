@@ -202,7 +202,7 @@ export default function HeaUsersPage() {
     >
       <StatRow cols={4}>
         <StatCard icon="users" iconTone="softblue" label="Total Users" value={String(users.length)} />
-        <StatCard icon="users" iconTone="purple" label="Role Groups" value={String(Object.keys(roleCounts).length)} sub="Roles in use" />
+        <StatCard icon="users" iconTone="purple" label="Role Groups" value={String(Object.keys(roleCounts).length)} />
         <StatCard icon="plus" iconTone="softgreen" label="Added – Last 30 Days" value={String(recentCount)} />
         <StatCard
           icon="user"

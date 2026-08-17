@@ -170,9 +170,9 @@ export default function TevetaUsersPage() {
       panelWidth="w-[380px]"
     >
       <StatRow cols={3}>
-        <StatCard icon="users" iconTone="softblue" label="Total Users" value={String(users.length)} sub="Manageable by your seat" />
-        <StatCard icon="users" iconTone="purple" label="Role Groups" value={String(Object.keys(roleCounts).length)} sub="Roles in use" />
-        <StatCard icon="clock" iconTone="amber" label="Newest Account" value={newest} sub="Most recently created" />
+        <StatCard icon="users" iconTone="softblue" label="Total Users" value={String(users.length)} />
+        <StatCard icon="users" iconTone="purple" label="Role Groups" value={String(Object.keys(roleCounts).length)} />
+        <StatCard icon="clock" iconTone="amber" label="Newest Account" value={newest} />
       </StatRow>
 
       <ErrorBanner error={error} onRetry={load} />

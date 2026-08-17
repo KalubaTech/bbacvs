@@ -229,7 +229,7 @@ function ValidationInner() {
       )}
 
       <SectionCard title="Officer Review" className="mt-4" pad="p-4">
-        <AvatarName name={user.name || user.email} sub="ZAQA Officer" />
+        <AvatarName name={user.name || user.email} />
         <div className="mt-3 grid grid-cols-1 gap-3">
           <KV label="Checks Last Run" value={report ? fmtDateTime(report.ranAt) : "—"} />
           <KV label="Current Status" value={status.label} />
@@ -416,10 +416,6 @@ function ValidationInner() {
                         {nqfLevel.typicalQualifications.join(", ")}
                       </div>
                     )}
-                    <p className="mt-3 border-t border-slate-100 pt-2.5 text-[11.5px] text-slate-400">
-                      Compare the awarded qualification against these level descriptors to judge whether the
-                      claimed Level {cred.zqfLevel} is appropriate.
-                    </p>
                   </>
                 ) : (
                   <p className="py-3 text-center text-[12.5px] text-slate-400">

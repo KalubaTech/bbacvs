@@ -256,10 +256,10 @@ export default function TevetaDashboardPage() {
       panelWidth="w-[400px]"
     >
       <StatRow cols={6}>
-        <StatCard icon="bank" iconTone="softblue" label="Registered Providers" value={String(institutions.length)} sub="TEVET institution registry" />
-        <StatCard icon="clock" iconTone="amber" label="Pending Approval" value={String(pending.length)} sub="Awaiting TEVETA decision" />
-        <StatCard icon="checkCircle" iconTone="softgreen" label="Approved Providers" value={String(counts.approved || 0)} sub="Accredited to issue" />
-        <StatCard icon="pause" iconTone="softred" label="Suspended" value={String(counts.suspended || 0)} sub="Issuance suspended" />
+        <StatCard icon="bank" iconTone="softblue" label="Registered Providers" value={String(institutions.length)} />
+        <StatCard icon="clock" iconTone="amber" label="Pending Approval" value={String(pending.length)} />
+        <StatCard icon="checkCircle" iconTone="softgreen" label="Approved Providers" value={String(counts.approved || 0)} />
+        <StatCard icon="pause" iconTone="softred" label="Suspended" value={String(counts.suspended || 0)} />
         <StatCard icon="file" iconTone="purple" label="TEVET Credentials" value={String(credTotals.total)} sub={`${credTotals.active} active · ${credTotals.revoked} revoked`} />
         <Link href="/teveta/rpl" className="block min-w-0">
           <StatCard
@@ -267,7 +267,6 @@ export default function TevetaDashboardPage() {
             iconTone="orange"
             label="RPL Applications"
             value={rplCount == null ? "—" : String(rplCount)}
-            sub="Open the RPL casework queue →"
             className="h-full transition hover:border-orange-300"
           />
         </Link>

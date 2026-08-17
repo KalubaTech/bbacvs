@@ -243,10 +243,10 @@ export default function GraduateDashboardPage() {
 
       {/* KPI row */}
       <StatRow cols={4}>
-        <StatCard icon="file" iconTone="softblue" label="Total Credentials" value={String(creds.length)} sub="All time issued" />
-        <StatCard icon="shieldCheck" iconTone="softgreen" label="Verified Credentials" value={String(stats.verified)} sub="ZAQA validated" />
-        <StatCard icon="clock" iconTone="amber" label="Pending Verification" value={String(stats.pending)} sub="Awaiting ZAQA" />
-        <StatCard icon="alert" iconTone="softred" label="Requires Attention" value={String(stats.attention + stats.revoked)} sub="Flagged, rejected or revoked" />
+        <StatCard icon="file" iconTone="softblue" label="Total Credentials" value={String(creds.length)} />
+        <StatCard icon="shieldCheck" iconTone="softgreen" label="Verified Credentials" value={String(stats.verified)} />
+        <StatCard icon="clock" iconTone="amber" label="Pending Verification" value={String(stats.pending)} />
+        <StatCard icon="alert" iconTone="softred" label="Requires Attention" value={String(stats.attention + stats.revoked)} />
       </StatRow>
 
       {/* Hero banner */}
