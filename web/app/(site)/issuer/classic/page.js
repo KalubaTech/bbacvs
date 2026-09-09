@@ -200,7 +200,7 @@ export default function IssuerPage() {
               <select className="input" value={form.credentialType} onChange={set("credentialType")}>
                 <option value="diploma">Diploma</option>
                 <option value="degree">Degree</option>
-                <option value="masters">Master's</option>
+                <option value="masters">Master&apos;s</option>
                 <option value="phd">PhD</option>
               </select>
             </label>

@@ -7,7 +7,7 @@ import {IIssuerRegistry} from "./interfaces/IIssuerRegistry.sol";
 /// @title IssuerRegistry
 /// @notice Role-gated registry of accredited institutional issuers.
 /// @dev Privileged calls (grant/revoke ISSUER_ROLE) are gated to DEFAULT_ADMIN_ROLE,
-///      which in production is held by the 2-of-3 GovernanceSafe (ZQA/ECZ/HEA), not an EOA.
+///      which in production is held by the 2-of-3 GovernanceSafe (ZAQA/ECZ/HEA), not an EOA.
 ///      Security layer L3 (OpenZeppelin AccessControl) of the proposal's ten-layer model.
 contract IssuerRegistry is AccessControl, IIssuerRegistry {
     bytes32 public constant ISSUER_ROLE = keccak256("ISSUER_ROLE");

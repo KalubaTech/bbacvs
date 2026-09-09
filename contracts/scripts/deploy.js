@@ -7,14 +7,14 @@ require("dotenv").config();
 const hre = require("hardhat");
 
 async function main() {
-  const { GOV_OWNER_ZQA, GOV_OWNER_ECZ, GOV_OWNER_HEA } = process.env;
-  const owners = [GOV_OWNER_ZQA, GOV_OWNER_ECZ, GOV_OWNER_HEA];
+  const { GOV_OWNER_ZAQA, GOV_OWNER_ECZ, GOV_OWNER_HEA } = process.env;
+  const owners = [GOV_OWNER_ZAQA, GOV_OWNER_ECZ, GOV_OWNER_HEA];
 
   if (owners.some((o) => !o || o === "0x0000000000000000000000000000000000000000")) {
-    throw new Error("Set GOV_OWNER_ZQA / GOV_OWNER_ECZ / GOV_OWNER_HEA in .env");
+    throw new Error("Set GOV_OWNER_ZAQA / GOV_OWNER_ECZ / GOV_OWNER_HEA in .env");
   }
 
-  console.log("Deploying GovernanceSafe (2-of-3: ZQA, ECZ, HEA)...");
+  console.log("Deploying GovernanceSafe (2-of-3: ZAQA, ECZ, HEA)...");
   const Safe = await hre.ethers.getContractFactory("GovernanceSafe");
   const safe = await Safe.deploy(owners, 2);
   await safe.waitForDeployment();

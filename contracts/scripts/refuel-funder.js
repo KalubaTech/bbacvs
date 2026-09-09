@@ -1,4 +1,4 @@
-// Sweeps surplus Sepolia ETH from ECZ + UNZA back to ZQA (the API's funder), keeping a
+// Sweeps surplus Sepolia ETH from ECZ + UNZA back to ZAQA (the API's funder), keeping a
 // small reserve in each. Recovers ETH after over-funded registration attempts.
 require("dotenv").config();
 const { ethers } = require("ethers");
@@ -12,7 +12,7 @@ async function main() {
   const byRole = Object.fromEntries(gov.wallets.map((w) => [w.role, w]));
   const issuer = JSON.parse(fs.readFileSync(path.join(dir, "issuer-key.json")));
 
-  const zqa = byRole.ZQA.address;
+  const zaqa = byRole.ZAQA.address;
   const sources = [
     { name: "ECZ", pk: byRole.ECZ.privateKey, reserve: "0.0015" },
     { name: "UNZA", pk: issuer.privateKey, reserve: "0.0015" },
@@ -25,13 +25,13 @@ async function main() {
     const gasCost = ethers.parseEther("0.0003"); // rough tx cost buffer
     const send = bal - reserve - gasCost;
     if (send > 0n) {
-      const tx = await w.sendTransaction({ to: zqa, value: send });
+      const tx = await w.sendTransaction({ to: zaqa, value: send });
       await tx.wait();
-      console.log(`${s.name}: swept ${ethers.formatEther(send)} ETH -> ZQA`);
+      console.log(`${s.name}: swept ${ethers.formatEther(send)} ETH -> ZAQA`);
     } else {
       console.log(`${s.name}: nothing to sweep (bal ${ethers.formatEther(bal)})`);
     }
   }
-  console.log("ZQA now:", ethers.formatEther(await provider.getBalance(zqa)), "ETH");
+  console.log("ZAQA now:", ethers.formatEther(await provider.getBalance(zaqa)), "ETH");
 }
 main().catch((e) => { console.error(e); process.exit(1); });

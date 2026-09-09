@@ -16,7 +16,7 @@ Day-to-day operation of the live BBACVS deployment.
 
 | Account | Address | Purpose |
 |---------|---------|---------|
-| ZQA / deployer / funder | `0xB861022F68a204b6847959187e75fC8ee668B631` | deploys, governance signer 1, funds new issuers |
+| ZAQA / deployer / funder | `0xB861022F68a204b6847959187e75fC8ee668B631` | deploys, governance signer 1, funds new issuers |
 | ECZ | `0x68e44d5949E28ddBE2EdC4bcBfb96Ab929e3cC85` | governance signer 2 |
 | HEA | `0x9f0E091CC5E0802d210e1EEb1F5D3da0cf628e09` | governance signer 3 (not actively used) |
 | UNZA issuer | `0xB917d254666bFC3b72cE44b5343a9cc57197Ba91` | seeded institution signing key |
@@ -45,7 +45,7 @@ require("dotenv").config();const {ethers}=require("ethers");const fs=require("fs
 const p=new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
 const g=JSON.parse(fs.readFileSync("governance-keys.json")).wallets.reduce((a,w)=>(a[w.role]=w,a),{});
 const i=JSON.parse(fs.readFileSync("issuer-key.json"));
-(async()=>{for(const[n,a]of[["ZQA",g.ZQA.address],["ECZ",g.ECZ.address],["UNZA",i.address]])
+(async()=>{for(const[n,a]of[["ZAQA",g.ZAQA.address],["ECZ",g.ECZ.address],["UNZA",i.address]])
 console.log(n,ethers.formatEther(await p.getBalance(a)),"ETH");})();'
 ```
 

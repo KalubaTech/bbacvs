@@ -1,10 +1,10 @@
-// One-off: generate a testnet governance keyset (ZQA/ECZ/HEA). Deployer = ZQA.
+// One-off: generate a testnet governance keyset (ZAQA/ECZ/HEA). Deployer = ZAQA.
 // Saves private keys to governance-keys.json (gitignored, mode 600). Prints addresses only.
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
 
-const roles = ["ZQA", "ECZ", "HEA"];
+const roles = ["ZAQA", "ECZ", "HEA"];
 const wallets = roles.map((role) => {
   const w = ethers.Wallet.createRandom();
   return { role, address: w.address, privateKey: w.privateKey };
@@ -16,7 +16,7 @@ fs.writeFileSync(
   JSON.stringify(
     {
       network: "sepolia",
-      note: "TESTNET ONLY. Worthless Sepolia ETH. Deployer = ZQA. Keep private.",
+      note: "TESTNET ONLY. Worthless Sepolia ETH. Deployer = ZAQA. Keep private.",
       generatedAt: new Date().toISOString(),
       wallets,
     },

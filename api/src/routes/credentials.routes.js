@@ -6,7 +6,10 @@ import { Issuer, CredentialIndex, Programme, VerificationLog } from "../models/i
 import { decryptKey } from "../services/keystore.service.js";
 import { anchorCredentialAs, revokeCredentialAs, verifyOnChain } from "../services/web3.service.js";
 import { renderQR } from "../services/signedQr.service.js";
-import { prepareCredential, indexCredential } from "../services/issuance.service.js";
+import {
+  prepareCredential, indexCredential, findDuplicateCredential, describeDuplicate,
+  issuanceLockKey, acquireIssuanceLock, DUPLICATE_CREDENTIAL_MESSAGE,
+} from "../services/issuance.service.js";
 import { buildCertificatePDF, buildTranscriptPDF } from "../services/pdf.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { pushEvent } from "../services/history.service.js";
@@ -42,6 +45,32 @@ async function programmeGate(issuerId, qualification) {
   const wanted = String(qualification || "").trim().toLowerCase();
   if (approved.some((p) => String(p.name || "").trim().toLowerCase() === wanted)) return null;
   return approved.map((p) => p.name);
+}
+
+// Duplicate-issuance guard (two layers). 1) Database: a live (active / pending / suspended)
+// credential from this institution to the same candidate — matched by email OR national ID —
+// for the same qualification and graduation year. 2) In-flight lock: an identical issuance
+// that is still pinning/anchoring (a double-clicked "Issue" button) and has no index row yet.
+// Returns { release } when issuance may proceed, or sends a 409 and returns null.
+async function guardDuplicateIssuance(res, { issuerId, holderEmail, nationalId, qualification, graduationYear, excludeHash }) {
+  const identity = { issuerId, holderEmail, nationalId, qualification, graduationYear };
+  const dup = await findDuplicateCredential({ ...identity, excludeHash });
+  if (dup) {
+    res.status(409).json({
+      error: DUPLICATE_CREDENTIAL_MESSAGE, code: "duplicate_credential",
+      existing: describeDuplicate(dup, { holderEmail, nationalId }),
+    });
+    return null;
+  }
+  const release = acquireIssuanceLock(issuanceLockKey(identity));
+  if (!release) {
+    res.status(409).json({
+      error: "This credential is already being issued — please wait for the first request to finish.",
+      code: "issuance_in_progress",
+    });
+    return null;
+  }
+  return { release };
 }
 
 // A credential's QR/PDF may only be fetched by its holder, its issuing institution, or a
@@ -81,17 +110,24 @@ router.post("/issue", requireAuth, requireRole(...ISSUING_ROLES), validate(issue
     const { holderEmail, claims, zqfLevel, credentialType } = req.body;
     const allowed = await programmeGate(issuer._id, claims.qualification);
     if (allowed) return res.status(409).json({ error: "programme_not_accredited", allowed });
-    const meta = { zqfLevel, credentialType: resolveCredentialType(issuer, credentialType) };
-    const prep = await prepareCredential(issuer, holderEmail, claims);
-    const anchor = await anchorCredentialAs(decryptKey(issuer.encPrivateKey), prep.credentialHash, prep.cidHash);
-    const cred = await indexCredential(issuer, holderEmail, claims, prep, { status: "active", anchorTx: anchor.txHash, meta });
-    pushEvent(cred, req, "credential.issued", `Issued ${claims.qualification} to ${claims.name}`, { txHash: anchor.txHash });
-    await cred.save();
-    await logActivity(req, { action: "credential.issue", entity: "credential", entityId: prep.credentialHash, summary: `Issued ${claims.qualification} to ${claims.name}` });
-    res.status(201).json({
-      credentialHash: prep.credentialHash, cid: prep.cid, institution: issuer.institution,
-      anchor, qrPayload: prep.qrPayload, qrImage: await renderQR(prep.qrPayload),
+    const lock = await guardDuplicateIssuance(res, {
+      issuerId: issuer._id, holderEmail, nationalId: claims.nationalId,
+      qualification: claims.qualification, graduationYear: claims.graduationYear,
     });
+    if (!lock) return;
+    try {
+      const meta = { zqfLevel, credentialType: resolveCredentialType(issuer, credentialType) };
+      const prep = await prepareCredential(issuer, holderEmail, claims);
+      const anchor = await anchorCredentialAs(decryptKey(issuer.encPrivateKey), prep.credentialHash, prep.cidHash);
+      const cred = await indexCredential(issuer, holderEmail, claims, prep, { status: "active", anchorTx: anchor.txHash, meta });
+      pushEvent(cred, req, "credential.issued", `Issued ${claims.qualification} to ${claims.name}`, { txHash: anchor.txHash });
+      await cred.save();
+      await logActivity(req, { action: "credential.issue", entity: "credential", entityId: prep.credentialHash, summary: `Issued ${claims.qualification} to ${claims.name}` });
+      res.status(201).json({
+        credentialHash: prep.credentialHash, cid: prep.cid, institution: issuer.institution,
+        anchor, qrPayload: prep.qrPayload, qrImage: await renderQR(prep.qrPayload),
+      });
+    } finally { lock.release(); }
   } catch (err) { next(err); }
 });
 
@@ -106,19 +142,28 @@ router.post("/prepare", requireAuth, requireRole(...ISSUING_ROLES), validate(iss
     const { holderEmail, claims, zqfLevel, credentialType } = req.body;
     const allowed = await programmeGate(issuer._id, claims.qualification);
     if (allowed) return res.status(409).json({ error: "programme_not_accredited", allowed });
-    const meta = { zqfLevel, credentialType: resolveCredentialType(issuer, credentialType) };
-    const prep = await prepareCredential(issuer, holderEmail, claims);
-    const cred = await indexCredential(issuer, holderEmail, claims, prep, { status: "pending", anchorTx: null, meta });
-    pushEvent(cred, req, "credential.prepared", `Prepared ${claims.qualification} for ${claims.name} (MetaMask anchoring)`);
-    await cred.save();
-    await logActivity(req, { action: "credential.prepare", entity: "credential", entityId: prep.credentialHash, summary: `Prepared ${claims.qualification} for ${claims.name} (awaiting MetaMask anchor)` });
-    res.json({
-      credentialHash: prep.credentialHash,
-      cidHash: prep.cidHash,
-      cid: prep.cid,
-      credentialRegistry: config.chain.credentialRegistry, // contract the client calls
-      issuerAddress: issuer.walletAddress,                  // MetaMask must be this account
+    // A PENDING record from an earlier /prepare counts as a duplicate too — the institution
+    // must anchor (or abandon) that one rather than prepare the same credential twice.
+    const lock = await guardDuplicateIssuance(res, {
+      issuerId: issuer._id, holderEmail, nationalId: claims.nationalId,
+      qualification: claims.qualification, graduationYear: claims.graduationYear,
     });
+    if (!lock) return;
+    try {
+      const meta = { zqfLevel, credentialType: resolveCredentialType(issuer, credentialType) };
+      const prep = await prepareCredential(issuer, holderEmail, claims);
+      const cred = await indexCredential(issuer, holderEmail, claims, prep, { status: "pending", anchorTx: null, meta });
+      pushEvent(cred, req, "credential.prepared", `Prepared ${claims.qualification} for ${claims.name} (MetaMask anchoring)`);
+      await cred.save();
+      await logActivity(req, { action: "credential.prepare", entity: "credential", entityId: prep.credentialHash, summary: `Prepared ${claims.qualification} for ${claims.name} (awaiting MetaMask anchor)` });
+      res.json({
+        credentialHash: prep.credentialHash,
+        cidHash: prep.cidHash,
+        cid: prep.cid,
+        credentialRegistry: config.chain.credentialRegistry, // contract the client calls
+        issuerAddress: issuer.walletAddress,                  // MetaMask must be this account
+      });
+    } finally { lock.release(); }
   } catch (err) { next(err); }
 });
 
@@ -377,35 +422,46 @@ router.post("/:hash/supersede", requireAuth, requireRole(...ISSUING_ROLES), vali
       zqfLevel: req.body.zqfLevel ?? cred.zqfLevel,
       credentialType: resolveCredentialType(issuer, req.body.credentialType ?? cred.credentialType),
     };
-    // Same issuance path as POST /issue: prepare → anchor → index (as the corrected record).
-    const prep = await prepareCredential(issuer, cred.holderEmail, claims);
-    const anchor = await anchorCredentialAs(decryptKey(issuer.encPrivateKey), prep.credentialHash, prep.cidHash);
-    const newCred = await indexCredential(issuer, cred.holderEmail, claims, prep, { status: "active", anchorTx: anchor.txHash, meta });
-    newCred.supersedes = cred.credentialHash;
-    // A previously validated credential must be revalidated after a correction.
-    const needsRevalidation = cred.zaqaValidation === "validated";
-    if (needsRevalidation) {
-      newCred.zaqaValidation = "pending";
-      newCred.zaqaNote = "Reissued as a correction — requires ZAQA revalidation.";
-      newCred.validationReport = await runValidationChecks(newCred);
-    }
-    pushEvent(newCred, req, "credential.issued", `Issued as a correction superseding ${cred.credentialHash}`, { supersedes: cred.credentialHash, txHash: anchor.txHash });
-    await newCred.save();
-    // Revoke the old record on-chain — reason 1 = AdministrativeError.
-    const revokeTx = await revokeCredentialAs(decryptKey(issuer.encPrivateKey), cred.credentialHash, 1);
-    cred.status = "revoked"; cred.reasonCode = 1; cred.supersededBy = prep.credentialHash;
-    // The correction (if the holder raised one) is answered by this reissue.
-    if (cred.correctionRequest?.status === "open") cred.correctionRequest.status = "resolved";
-    pushEvent(cred, req, "credential.superseded", `Superseded by ${prep.credentialHash}`, { from: "active", to: "revoked", reasonCode: 1, supersededBy: prep.credentialHash });
-    await cred.save();
-    await logActivity(req, { action: "credential.supersede", entity: "credential", entityId: prep.credentialHash, summary: `Reissued ${claims.qualification} for ${claims.name}, superseding the previous record` });
-    await notifyEmail(cred.holderEmail, `${issuer.institution} corrected your ${claims.qualification} credential. A new certificate has replaced the old one${needsRevalidation ? " and has been forwarded to ZAQA for revalidation" : ""}.`);
-    if (needsRevalidation) await notifyRole("zaqa", `Corrected credential requires revalidation: ${claims.name} — ${claims.qualification} (${issuer.institution}). Automated risk: ${newCred.validationReport.risk}.`);
-    res.status(201).json({
-      credentialHash: prep.credentialHash, cid: prep.cid, institution: issuer.institution,
-      supersedes: cred.credentialHash, anchor, revokeTx,
-      qrPayload: prep.qrPayload, qrImage: await renderQR(prep.qrPayload),
+    // The corrected record must not collide with ANOTHER live credential (the one being
+    // superseded is excluded — it is revoked below), and a double-clicked "Reissue" must not
+    // anchor two replacements.
+    const lock = await guardDuplicateIssuance(res, {
+      issuerId: issuer._id, holderEmail: cred.holderEmail, nationalId: claims.nationalId,
+      qualification: claims.qualification, graduationYear: claims.graduationYear,
+      excludeHash: cred.credentialHash,
     });
+    if (!lock) return;
+    try {
+      // Same issuance path as POST /issue: prepare → anchor → index (as the corrected record).
+      const prep = await prepareCredential(issuer, cred.holderEmail, claims);
+      const anchor = await anchorCredentialAs(decryptKey(issuer.encPrivateKey), prep.credentialHash, prep.cidHash);
+      const newCred = await indexCredential(issuer, cred.holderEmail, claims, prep, { status: "active", anchorTx: anchor.txHash, meta });
+      newCred.supersedes = cred.credentialHash;
+      // A previously validated credential must be revalidated after a correction.
+      const needsRevalidation = cred.zaqaValidation === "validated";
+      if (needsRevalidation) {
+        newCred.zaqaValidation = "pending";
+        newCred.zaqaNote = "Reissued as a correction — requires ZAQA revalidation.";
+        newCred.validationReport = await runValidationChecks(newCred);
+      }
+      pushEvent(newCred, req, "credential.issued", `Issued as a correction superseding ${cred.credentialHash}`, { supersedes: cred.credentialHash, txHash: anchor.txHash });
+      await newCred.save();
+      // Revoke the old record on-chain — reason 1 = AdministrativeError.
+      const revokeTx = await revokeCredentialAs(decryptKey(issuer.encPrivateKey), cred.credentialHash, 1);
+      cred.status = "revoked"; cred.reasonCode = 1; cred.supersededBy = prep.credentialHash;
+      // The correction (if the holder raised one) is answered by this reissue.
+      if (cred.correctionRequest?.status === "open") cred.correctionRequest.status = "resolved";
+      pushEvent(cred, req, "credential.superseded", `Superseded by ${prep.credentialHash}`, { from: "active", to: "revoked", reasonCode: 1, supersededBy: prep.credentialHash });
+      await cred.save();
+      await logActivity(req, { action: "credential.supersede", entity: "credential", entityId: prep.credentialHash, summary: `Reissued ${claims.qualification} for ${claims.name}, superseding the previous record` });
+      await notifyEmail(cred.holderEmail, `${issuer.institution} corrected your ${claims.qualification} credential. A new certificate has replaced the old one${needsRevalidation ? " and has been forwarded to ZAQA for revalidation" : ""}.`);
+      if (needsRevalidation) await notifyRole("zaqa", `Corrected credential requires revalidation: ${claims.name} — ${claims.qualification} (${issuer.institution}). Automated risk: ${newCred.validationReport.risk}.`);
+      res.status(201).json({
+        credentialHash: prep.credentialHash, cid: prep.cid, institution: issuer.institution,
+        supersedes: cred.credentialHash, anchor, revokeTx,
+        qrPayload: prep.qrPayload, qrImage: await renderQR(prep.qrPayload),
+      });
+    } finally { lock.release(); }
   } catch (err) { next(err); }
 });
 

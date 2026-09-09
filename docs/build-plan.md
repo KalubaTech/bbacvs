@@ -46,7 +46,7 @@ Updated to reflect the live deployment.
 
 ## Deferred / production-only
 - Real Gnosis Safe (replace the `GovernanceSafe` prototype)
-- Self-hosted IPFS cluster (ZQA/ECZ/HEA); paid pinning
+- Self-hosted IPFS cluster (ZAQA/ECZ/HEA); paid pinning
 - Polygon PoS / zkEVM migration (no Solidity changes needed)
-- ECZ/ZQA legacy system integration
+- ECZ/ZAQA legacy system integration
 - Client-side (MetaMask) issuance signing; HSM/KMS for issuer keys

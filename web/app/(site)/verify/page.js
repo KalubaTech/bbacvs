@@ -175,6 +175,7 @@ export default function VerifyPage() {
           {result.credential && (
             <dl className="mt-5 grid grid-cols-1 gap-3 border-t border-black/5 pt-4 sm:grid-cols-2">
               {result.credential.subjectName && <Item label="Graduate" value={result.credential.subjectName} />}
+              {result.credential.nationalId && <Item label="NRC / ID (partially hidden)" value={result.credential.nationalId} />}
               {result.credential.qualification && <Item label="Qualification" value={result.credential.qualification} />}
               {result.credential.institution && <Item label="Institution" value={result.credential.institution} />}
               {result.credential.graduationYear && <Item label="Graduation year" value={result.credential.graduationYear} />}

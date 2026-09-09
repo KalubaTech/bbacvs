@@ -51,7 +51,7 @@ function TevetRegister({ token }) {
     } finally {
       setLoading(false);
     }
-  }, [token, q, level, page]);
+  }, [q, level, page]);
 
   useEffect(() => {
     load();

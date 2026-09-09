@@ -1,6 +1,6 @@
 // Real end-to-end issuance on Sepolia (no Pinata needed for the on-chain path):
 //  1. fund an issuer account with gas
-//  2. authorise it via a 2-of-3 GovernanceSafe proposal (ZQA proposes, ECZ confirms→executes)
+//  2. authorise it via a 2-of-3 GovernanceSafe proposal (ZAQA proposes, ECZ confirms→executes)
 //  3. build a W3C VC, SHA-256 hash it, anchor (hash, cidHash) on-chain
 //  4. read back on-chain verification status -> VERIFIED
 //
@@ -30,7 +30,7 @@ async function main() {
   const byRole = Object.fromEntries(gov.wallets.map((w) => [w.role, w]));
 
   const provider = ethers.provider;
-  const zqa = new ethers.Wallet(byRole.ZQA.privateKey, provider); // = deployer, has funds
+  const zaqa = new ethers.Wallet(byRole.ZAQA.privateKey, provider); // = deployer, has funds
   const ecz = new ethers.Wallet(byRole.ECZ.privateKey, provider);
 
   // Persistent issuer wallet (a mock accredited institution).
@@ -48,13 +48,13 @@ async function main() {
   console.log("Issuer:", issuerInfo.institution, issuer.address);
 
   const c = deployments.contracts;
-  const safe = await ethers.getContractAt("GovernanceSafe", c.GovernanceSafe, zqa);
-  const issuerRegistry = await ethers.getContractAt("IssuerRegistry", c.IssuerRegistry, zqa);
+  const safe = await ethers.getContractAt("GovernanceSafe", c.GovernanceSafe, zaqa);
+  const issuerRegistry = await ethers.getContractAt("IssuerRegistry", c.IssuerRegistry, zaqa);
   const credReg = await ethers.getContractAt("CredentialRegistry", c.CredentialRegistry, issuer);
 
   // 1. gas
-  await ensureGas(zqa, issuer, "0.004", "0.006", "issuer");
-  await ensureGas(zqa, ecz, "0.003", "0.004", "ECZ");
+  await ensureGas(zaqa, issuer, "0.004", "0.006", "issuer");
+  await ensureGas(zaqa, ecz, "0.003", "0.004", "ECZ");
 
   // 2. authorise issuer via 2-of-3 multisig
   if (!(await issuerRegistry.isAuthorised(issuer.address))) {
@@ -64,8 +64,8 @@ async function main() {
       issuer.address, did, institution,
     ]);
     const txId = await safe.transactionCount(); // next index
-    console.log(`ZQA proposing grantIssuerRole (txId ${txId})...`);
-    await (await safe.connect(zqa).proposeTransaction(c.IssuerRegistry, 0, data)).wait();
+    console.log(`ZAQA proposing grantIssuerRole (txId ${txId})...`);
+    await (await safe.connect(zaqa).proposeTransaction(c.IssuerRegistry, 0, data)).wait();
     console.log("ECZ confirming (executes at threshold 2)...");
     await (await safe.connect(ecz).confirmTransaction(txId)).wait();
   }

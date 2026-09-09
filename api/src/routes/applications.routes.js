@@ -9,7 +9,11 @@ import { requireAuth, requireRole, ROLES, ISSUING_ROLES } from "../middleware/au
 import { Application, Issuer } from "../models/index.js";
 import { decryptKey } from "../services/keystore.service.js";
 import { anchorCredentialAs } from "../services/web3.service.js";
-import { prepareCredential, indexCredential } from "../services/issuance.service.js";
+import {
+  prepareCredential, indexCredential, findDuplicateCredential, describeDuplicate,
+  issuanceLockKey, acquireIssuanceLock, DUPLICATE_CREDENTIAL_MESSAGE,
+} from "../services/issuance.service.js";
+import { normaliseNationalId } from "../utils/nationalId.js";
 import { pin, fetchByCid } from "../services/ipfs.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { pushEvent, makeEvent } from "../services/history.service.js";
@@ -85,17 +89,30 @@ router.post("/", requireAuth, requireRole(ROLES.HOLDER), validate(applySchema), 
         message: "A credential matching your details already exists and is awaiting validation. No new application is needed.",
       });
     }
-    // Duplicate-application guard: one open application per credential.
+    // Duplicate-application guard: one OPEN application per credential across the whole review
+    // lifecycle (submitted → screening → under_review → awaiting_evidence → decision_pending).
+    // A new application is only allowed once the previous one has reached a final state
+    // (issued / rejected / withdrawn). The applicant is matched by email or, when supplied,
+    // by NRC — so a re-application under a different email address is still caught.
+    const applicantNationalId = normaliseNationalId(req.body.nationalId);
+    const applicantOr = [{ applicantEmail: req.user.email?.toLowerCase() }];
+    if (applicantNationalId) applicantOr.push({ applicantNationalId });
     const dupApp = await Application.findOne({
-      applicantEmail: req.user.email?.toLowerCase(), targetIssuer: issuer._id,
-      qualification: qualRx, graduationYear: req.body.graduationYear, status: "submitted",
+      targetIssuer: issuer._id, qualification: qualRx, graduationYear: req.body.graduationYear,
+      status: { $nin: TERMINAL_STATUSES },
+      $or: applicantOr,
     }).lean();
-    if (dupApp) return res.status(409).json({ error: "You already have a pending application for this credential." });
+    if (dupApp) {
+      return res.status(409).json({
+        error: `You already have an open application for this credential (currently ${dupApp.status.replace(/_/g, " ")}). A new application can only be made once it has been issued, rejected or withdrawn.`,
+        code: "duplicate_application", applicationId: dupApp._id, status: dupApp.status,
+      });
+    }
 
     const cid = await pin({ filename: req.body.document.name, mime: req.body.document.mime, data: req.body.document.data });
     const app = await Application.create({
       applicantId: req.user.sub, applicantEmail: req.user.email, applicantName: req.user.name,
-      applicantNationalId: req.body.nationalId,
+      applicantNationalId,
       targetIssuer: issuer._id, institution: issuer.institution,
       qualification: req.body.qualification, graduationYear: req.body.graduationYear,
       credentialType: req.body.credentialType, zqfLevel: req.body.zqfLevel,
@@ -155,24 +172,44 @@ router.post("/:id/verify-issue", requireAuth, requireRole(...ISSUING_ROLES), asy
     }
     const claims = { name: app.applicantName, nationalId: app.applicantNationalId, qualification: app.qualification, graduationYear: app.graduationYear };
     const meta = { zqfLevel: app.zqfLevel, credentialType: issuer.sector === "secondary" ? "secondary" : (app.credentialType || "other") };
-    const prep = await prepareCredential(issuer, app.applicantEmail, claims);
-    const anchor = await anchorCredentialAs(decryptKey(issuer.encPrivateKey), prep.credentialHash, prep.cidHash);
-    const cred = await indexCredential(issuer, app.applicantEmail, claims, prep, { status: "active", anchorTx: anchor.txHash, meta });
-    // Institution has verified — forward straight to ZAQA for validation, with the
-    // automated decision pack attached (§6).
-    cred.zaqaValidation = "pending";
-    cred.validationReport = await runValidationChecks(cred);
-    pushEvent(cred, req, "credential.issued", `Issued from ${app.applicantName}'s digitization application`, { txHash: anchor.txHash });
-    pushEvent(cred, req, "credential.submitted_to_zaqa", undefined, { from: "draft", to: "pending" });
-    await cred.save();
-    const from = app.status;
-    app.status = "issued"; app.credentialHash = prep.credentialHash;
-    pushEvent(app, req, "application.issued", "Credential issued and forwarded to ZAQA for validation", { from, to: "issued", credentialHash: prep.credentialHash });
-    await app.save();
-    await logActivity(req, { action: "application.verify_issue", entity: "application", entityId: String(app._id), summary: `Verified & forwarded ${app.applicantName}'s ${app.qualification} to ZAQA` });
-    await notifyEmail(app.applicantEmail, `${app.institution} verified your ${app.qualification} and forwarded it to ZAQA for national validation.`);
-    await notifyRole("zaqa", `New credential submitted for validation: ${app.applicantName} — ${app.qualification} (${app.institution}). Automated risk: ${cred.validationReport.risk}.`);
-    res.status(201).json({ application: view(app) });
+    // Duplicate-issuance guard: never anchor the same qualification twice for this candidate
+    // (matched by email or NRC), and reject a concurrent double-click while the first request
+    // is still pinning / anchoring.
+    const identity = {
+      issuerId: issuer._id, holderEmail: app.applicantEmail, nationalId: app.applicantNationalId,
+      qualification: app.qualification, graduationYear: app.graduationYear,
+    };
+    const dup = await findDuplicateCredential(identity);
+    if (dup) {
+      return res.status(409).json({
+        error: DUPLICATE_CREDENTIAL_MESSAGE, code: "duplicate_credential",
+        existing: describeDuplicate(dup, identity),
+      });
+    }
+    const release = acquireIssuanceLock(issuanceLockKey(identity));
+    if (!release) {
+      return res.status(409).json({ error: "This credential is already being issued — please wait for the first request to finish.", code: "issuance_in_progress" });
+    }
+    try {
+      const prep = await prepareCredential(issuer, app.applicantEmail, claims);
+      const anchor = await anchorCredentialAs(decryptKey(issuer.encPrivateKey), prep.credentialHash, prep.cidHash);
+      const cred = await indexCredential(issuer, app.applicantEmail, claims, prep, { status: "active", anchorTx: anchor.txHash, meta });
+      // Institution has verified — forward straight to ZAQA for validation, with the
+      // automated decision pack attached (§6).
+      cred.zaqaValidation = "pending";
+      cred.validationReport = await runValidationChecks(cred);
+      pushEvent(cred, req, "credential.issued", `Issued from ${app.applicantName}'s digitization application`, { txHash: anchor.txHash });
+      pushEvent(cred, req, "credential.submitted_to_zaqa", undefined, { from: "draft", to: "pending" });
+      await cred.save();
+      const from = app.status;
+      app.status = "issued"; app.credentialHash = prep.credentialHash;
+      pushEvent(app, req, "application.issued", "Credential issued and forwarded to ZAQA for validation", { from, to: "issued", credentialHash: prep.credentialHash });
+      await app.save();
+      await logActivity(req, { action: "application.verify_issue", entity: "application", entityId: String(app._id), summary: `Verified & forwarded ${app.applicantName}'s ${app.qualification} to ZAQA` });
+      await notifyEmail(app.applicantEmail, `${app.institution} verified your ${app.qualification} and forwarded it to ZAQA for national validation.`);
+      await notifyRole("zaqa", `New credential submitted for validation: ${app.applicantName} — ${app.qualification} (${app.institution}). Automated risk: ${cred.validationReport.risk}.`);
+      res.status(201).json({ application: view(app) });
+    } finally { release(); }
   } catch (err) { next(err); }
 });
 

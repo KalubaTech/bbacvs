@@ -39,7 +39,7 @@ Live at **https://bbacvs.kalootech.com**.
 
 ### The four actors
 
-- **Governance (Admin)** — ZQA/ECZ/HEA. Registers institutions as issuers via a 2-of-3 multi-sig.
+- **Governance (Admin)** — ZAQA/ECZ/HEA. Registers institutions as issuers via a 2-of-3 multi-sig.
 - **Issuer (Institution)** — issues signed credentials.
 - **Holder (Graduate)** — owns credentials, presents QR/PDF (Self-Sovereign Identity).
 - **Verifier (Employer)** — validates credentials; no account needed.
@@ -81,7 +81,7 @@ Repository layout:
 
 Four contracts, deployed to Sepolia in this order (see `scripts/deploy.js`):
 
-1. **GovernanceSafe** — minimal 2-of-3 multi-sig (ZQA, ECZ, HEA). `proposeTransaction` /
+1. **GovernanceSafe** — minimal 2-of-3 multi-sig (ZAQA, ECZ, HEA). `proposeTransaction` /
    `confirmTransaction`; executes automatically once 2 confirmations are reached. Holds the
    admin role over the registries so no single regulator acts unilaterally.
 2. **IssuerRegistry** — OpenZeppelin `AccessControl`. `grantIssuerRole(account, did, institution)`
@@ -142,9 +142,30 @@ Issuer submits graduate data → API builds a W3C VC → ECDSA-signs it → SHA-
 AES-256-GCM encrypts → pins to IPFS (CID) → anchors `(hash, keccak(CID))` on-chain as that
 issuer → builds a signed QR → indexes metadata in MongoDB.
 
+**Duplicate prevention & identity matching.** Issuance is guarded at three levels:
+
+1. **Application stage** — a graduate may hold only one *open* digitization application per
+   (institution, qualification, year); "open" spans the whole review lifecycle
+   (`submitted → screening → under_review → awaiting_evidence → decision_pending`) and a new
+   application is accepted only after `issued`, `rejected` or `withdrawn`.
+2. **Pre-issuance (API)** — before any IPFS pin or blockchain transaction, `/issue`,
+   `/prepare`, `/supersede` and `/applications/:id/verify-issue` look for a live credential
+   (`active`, `pending`, `suspended`) from the same institution for the same qualification and
+   year, matching the candidate by **email or NRC** (`holderNationalId`, stored normalised).
+   A hit returns `409 duplicate_credential`. An in-process lock keyed on the same tuple
+   rejects a concurrent identical request (double-click) with `409 issuance_in_progress`.
+3. **On-chain** — `CredentialRegistry._issue` reverts with `Credential: already issued` if a
+   hash is ever anchored twice (covered by the Hardhat suite).
+
+The automated ZAQA validation engine's "Duplicate check" uses the same identity rule
+(email, DID **and** NRC), so a duplicate that slipped through under a different email is
+flagged as *high* risk before national validation.
+
 ### Verification
 - **Online**: `GET /api/verify/:hash` reads `CredentialRegistry.verifyCredential` (zero gas)
   and enriches with index metadata → `VERIFIED / REVOKED / UNKNOWN_ISSUER / NOT_FOUND`.
+  The public result carries the holder's NRC **masked** (`••••••/78/1`) so an employer can
+  distinguish two graduates with the same name; the full identifier is never exposed.
 - **Offline**: `POST /api/verify/offline` validates the QR's ECDSA signature against a cached
   issuer public key — no network/chain needed.
 

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 /// @title GovernanceSafe
-/// @notice Minimal 2-of-3 multi-signature wallet for ZQA / ECZ / HEA (FR1, security L4).
+/// @notice Minimal 2-of-3 multi-signature wallet for ZAQA / ECZ / HEA (FR1, security L4).
 /// @dev Prototype stand-in for a production Gnosis Safe deployment. Privileged operations
 ///      on IssuerRegistry / CredentialRegistry should set this contract as their admin so
 ///      that no single regulator can act unilaterally. Production: replace with Gnosis Safe.
@@ -32,7 +32,7 @@ contract GovernanceSafe {
         _;
     }
 
-    /// @param _owners Exactly three signatories: [ZQA, ECZ, HEA].
+    /// @param _owners Exactly three signatories: [ZAQA, ECZ, HEA].
     /// @param _threshold Required confirmations (2).
     constructor(address[] memory _owners, uint256 _threshold) {
         require(_owners.length == 3, "Safe: need 3 owners");

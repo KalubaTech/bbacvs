@@ -4,6 +4,7 @@
 // CRITICAL failure blocks one-click validation until the underlying issue is resolved.
 import { Issuer, CredentialIndex } from "../models/index.js";
 import { verifyOnChain } from "./web3.service.js";
+import { normaliseNationalId } from "../utils/nationalId.js";
 
 const CRITICAL_RULES = ["Issuer registered", "Issuer authorised", "Blockchain anchor & signature"];
 
@@ -42,9 +43,13 @@ export async function runValidationChecks(cred) {
   add("Award year present", !!cred.graduationYear, cred.graduationYear ? String(cred.graduationYear) : "missing");
 
   // Duplicate detection: same holder + qualification + year + institution, different record.
+  // The holder is matched by email, DID AND national ID (NRC / passport) — a person who
+  // re-applies under a different email address still shares the same NRC.
   const or = [];
   if (cred.holderEmail) or.push({ holderEmail: cred.holderEmail });
   if (cred.holderDID) or.push({ holderDID: cred.holderDID });
+  const nid = normaliseNationalId(cred.holderNationalId);
+  if (nid) or.push({ holderNationalId: nid });
   let dup = null;
   if (or.length) {
     dup = await CredentialIndex.findOne({
@@ -56,7 +61,15 @@ export async function runValidationChecks(cred) {
       $or: or,
     }).lean();
   }
-  add("Duplicate check", !dup, dup ? "another credential with the same holder, qualification, year and institution exists" : "no duplicate found");
+  let dupDetail = "no duplicate found";
+  if (dup) {
+    const via = [];
+    if (cred.holderEmail && dup.holderEmail === cred.holderEmail) via.push("email");
+    if (cred.holderDID && dup.holderDID === cred.holderDID) via.push("DID");
+    if (nid && dup.holderNationalId === nid) via.push("NRC");
+    dupDetail = `another credential with the same holder (matched by ${via.join(", ") || "identity"}), qualification, year and institution exists (${dup.credentialHash.slice(0, 10)}…, ${dup.status})`;
+  }
+  add("Duplicate check", !dup, dupDetail);
 
   // Signature / anchor: the on-chain anchor commits to the signed VC hash.
   let anchored = false;

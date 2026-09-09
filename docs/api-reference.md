@@ -45,10 +45,27 @@ Lists the issuer registry.
 ### `POST /credentials/issue` — `issuer`
 Builds + signs a W3C VC, encrypts, pins to IPFS, anchors on-chain, returns a signed QR.
 ```json
-{ "holderDID": "did:ethr:0x…", "holderEmail": "grad@mu.zm" (optional),
-  "claims": { "name": "…", "qualification": "…", "graduationYear": 2026 } }
-→ 201 { "credentialHash", "cid", "issuerDID", "institution", "issuerPublicKey",
+{ "holderEmail": "grad@mu.zm",
+  "claims": { "name": "…", "nationalId": "123456/78/1" (optional NRC/passport),
+              "qualification": "…", "graduationYear": 2026 } }
+→ 201 { "credentialHash", "cid", "institution",
         "anchor": { "txHash", "blockNumber" }, "qrPayload": {…}, "qrImage": "data:image/png;base64,…" }
+```
+
+**Duplicate-issuance guard** (also applies to `POST /credentials/prepare`,
+`POST /credentials/:hash/supersede` and `POST /applications/:id/verify-issue`). Before any
+off-chain or on-chain work, the API refuses to issue when a live credential — status
+`active`, `pending` (awaiting MetaMask anchor) or `suspended` — already exists for the same
+**institution + candidate + qualification (case-insensitive) + graduation year**. The
+candidate is matched by **email OR national ID (NRC)**, so a changed email address does not
+evade the check. A second identical request that arrives while the first is still pinning /
+anchoring (a double-clicked button) is refused by an in-flight lock.
+```json
+→ 409 { "error": "An active or pending credential already exists for this candidate and programme.",
+        "code": "duplicate_credential",
+        "existing": { "credentialHash", "status", "issuedAt", "matchedOn": ["email" | "nationalId"] } }
+→ 409 { "error": "This credential is already being issued — please wait for the first request to finish.",
+        "code": "issuance_in_progress" }
 ```
 
 ### `GET /credentials/mine` — `issuer`
@@ -72,18 +89,38 @@ Returns a PDF certificate (`Content-Type: application/pdf`).
 ## Verify (public)
 
 ### `GET /verify/:hash`
-Online verification against the chain, enriched with index metadata.
+Online verification against the chain, enriched with index metadata. `:hash` must be a
+`0x`-prefixed 32-byte hex string — anything else is rejected with `400 { "error": "Invalid credential hash" }`.
 ```json
 → { "status": "VERIFIED" | "REVOKED" | "UNKNOWN_ISSUER" | "NOT_FOUND",
+    "displayStatus": "VERIFIED" | "PENDING_ZAQA_VALIDATION" | "SUSPENDED" | …,
     "issuer": "0x…", "issuedAt": 1782890594, "mode": "online",
-    "credential": { "institution", "subjectName", "qualification", "graduationYear", "holderDID" } }
+    "credential": { "institution", "subjectName", "nationalId": "••••••/78/1", "qualification",
+                    "graduationYear", "holderDID", "zqfLevel", "credentialType", "zaqaValidation" },
+    "governance": {…}, "summary": {…} }
 ```
+`credential.nationalId` is the holder's NRC / passport **masked** (`123456/78/1 → ••••••/78/1`;
+other formats keep only the last two characters; `null` when none is on record). It lets an
+employer tell two graduates with the same name apart — the full identifier is never exposed
+on any public surface.
 
 ### `POST /verify/offline`
 Validates a signed QR's ECDSA signature against a supplied (cached) issuer public key.
 ```json
 { "payload": { "cred_did","cid","hash8","iss_pk_ref","iat","sig" }, "issuerPubKey": "02…" }
 → { "status": "OFFLINE_VERIFIED" | "INVALID", "issuer": "did:ethr:0x…" }
+```
+
+## Applications (credential digitization)
+
+### `POST /applications` — `holder`
+One **open** application per (institution, qualification, graduation year). An application is
+open while its status is `submitted`, `screening`, `under_review`, `awaiting_evidence` or
+`decision_pending`; a new one is only accepted once the previous has reached a final state
+(`issued`, `rejected`, `withdrawn`). The applicant is matched by email or by NRC.
+```json
+→ 409 { "error": "You already have an open application for this credential (currently under review). …",
+        "code": "duplicate_application", "applicationId", "status" }
 ```
 
 ## Health

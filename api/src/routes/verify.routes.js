@@ -6,6 +6,7 @@ import { verifyOffline, buildSignedPayload, renderQR } from "../services/signedQ
 import { buildVerificationCertificatePDF } from "../services/pdf.service.js";
 import { CredentialIndex, Issuer, Programme, VerificationLog } from "../models/index.js";
 import { config } from "../config/index.js";
+import { maskNationalId } from "../utils/nationalId.js";
 
 const router = Router();
 
@@ -53,13 +54,6 @@ function recordVerification({ credentialHash, result, mode, latencyMs }) {
   VerificationLog.create({ credentialHash, result, mode, latencyMs }).catch(() => {});
 }
 
-// Mask an NRC/passport for the public certificate (privacy — matches the redaction on the
-// official document): keep the last 2 characters only.
-function maskNationalId(id) {
-  if (!id) return "—";
-  const s = String(id);
-  return s.length <= 2 ? s : "•".repeat(Math.max(3, s.length - 2)) + s.slice(-2);
-}
 
 // Headline verification result: on-chain lifecycle takes precedence, then the ZAQA state.
 function combinedStatus(onchainStatus, zaqaValidation) {
@@ -165,6 +159,9 @@ router.get("/:id", async (req, res, next) => {
         ? {
             institution: meta.institution,
             subjectName: meta.subjectName,
+            // Masked NRC / national ID (e.g. ••••••/78/1) — lets a verifier tell two graduates
+            // with the same name apart without ever exposing the full identifier.
+            nationalId: maskNationalId(meta.holderNationalId),
             qualification: meta.qualification,
             graduationYear: meta.graduationYear,
             holderDID: meta.holderDID,
@@ -237,7 +234,7 @@ router.get("/:hash/certificate", async (req, res, next) => {
       : "—";
     const pdf = await buildVerificationCertificatePDF({
       holder: meta.subjectName,
-      nationalId: maskNationalId(meta.holderNationalId),
+      nationalId: maskNationalId(meta.holderNationalId) || "—",
       zaqaRef: meta.zaqaRef || "—",
       validatedAt,
       recognisedAs: RECOGNISED_AS[meta.credentialType] || "Qualification",

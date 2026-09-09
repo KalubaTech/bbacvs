@@ -48,11 +48,20 @@ cp .env.example .env.local
 npm run dev
 ```
 
+### Automated checks (CI-friendly, no prompts)
+
+```bash
+npm test                          # Hardhat contract suite + API tests (node --test)
+npm run contracts:test            # governance, issuance, revocation, emergency pause, duplicate anchoring
+npm run api:test                  # /health, /api/verify input validation, rate limiting, duplicate-guard units
+npm run lint                      # next lint with eslint-config-next (next/core-web-vitals)
+```
+
 ## Smart contracts
 
 | Contract             | Responsibility                                                        |
 |----------------------|----------------------------------------------------------------------|
-| `GovernanceSafe`     | 2-of-3 multi-sig (ZQA / ECZ / HEA) gating privileged operations       |
+| `GovernanceSafe`     | 2-of-3 multi-sig (ZAQA / ECZ / HEA) gating privileged operations       |
 | `IssuerRegistry`     | Role-gated registry of authorised institutional issuers (`ISSUER_ROLE`) |
 | `CredentialRegistry` | Anchors `(hash, cidHash, issuerDID)`; read-only verification          |
 | `RevocationRegistry` | Timestamped revocation with standardised reason codes (0–5)           |

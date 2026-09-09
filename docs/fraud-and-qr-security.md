@@ -47,7 +47,7 @@ presented credential and compares it byte-for-byte with the on-chain value.
 ### 2.2 Authenticity — defeats forgery (T2)
 
 Only wallets holding **`ISSUER_ROLE`** (OpenZeppelin `AccessControl`) may anchor a credential.
-That role is granted **only** through a **2-of-3 Gnosis-style multi-signature** shared by ZQA,
+That role is granted **only** through a **2-of-3 Gnosis-style multi-signature** shared by ZAQA,
 ECZ, and HEA — no single party can authorise an issuer.
 
 - An attacker cannot mint a valid on-chain record without an authorised issuer's private key.

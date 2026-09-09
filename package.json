@@ -2,7 +2,7 @@
   "name": "bbacvs",
   "version": "0.1.0",
   "private": true,
-  "description": "Blockchain-Based Academic Credential Verification System (BBACVS) — ZUT 2026",
+  "description": "Blockchain-Based Academic Credential Verification System (BBACVS) \u2014 ZUT 2026",
   "workspaces": [
     "contracts",
     "api",
@@ -12,7 +12,11 @@
     "contracts:compile": "npm --workspace contracts run compile",
     "contracts:test": "npm --workspace contracts run test",
     "api:dev": "npm --workspace api run dev",
-    "web:dev": "npm --workspace web run dev"
+    "web:dev": "npm --workspace web run dev",
+    "api:test": "npm --workspace api run test",
+    "web:lint": "npm --workspace web run lint",
+    "test": "npm run contracts:test && npm run api:test",
+    "lint": "npm run web:lint"
   },
   "engines": {
     "node": ">=18"

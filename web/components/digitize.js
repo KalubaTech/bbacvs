@@ -86,7 +86,7 @@ export function ApplyDigitization() {
             <span className="label">Type</span>
             <select className="input" value={form.credentialType} onChange={set("credentialType")}>
               <option value="diploma">Diploma</option><option value="degree">Degree</option>
-              <option value="masters">Master's</option><option value="phd">PhD</option>
+              <option value="masters">Master&apos;s</option><option value="phd">PhD</option>
               <option value="secondary">Secondary</option>
             </select>
           </label>
