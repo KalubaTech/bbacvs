@@ -17,7 +17,7 @@ const SECTOR_LABEL = { higher_ed: "Higher Education", university: "University", 
 
 const short = (v) => (v && v.length > 22 ? `${v.slice(0, 12)}…${v.slice(-6)}` : v || "—");
 
-function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onViewDoc, onSaveNote }) {
+function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onViewDoc, onSaveNote, onCertificate, onEditProgrammes }) {
   const status = inst.heaStatus || "approved";
   const [note, setNote] = useState(inst.heaNote || "");
   const timeline = [
@@ -67,7 +67,11 @@ function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onVie
 
       <SectionCard
         title="Accredited Programmes"
-        action={<span className="text-[11px] font-semibold text-slate-500">{(inst.accreditedPrograms || []).length}</span>}
+        action={
+          <button type="button" onClick={() => onEditProgrammes(inst)} className="text-[11px] font-semibold text-blue-600 hover:underline">
+            Edit ({(inst.accreditedPrograms || []).length})
+          </button>
+        }
         className="mb-4"
         pad="p-3.5"
       >
@@ -113,6 +117,11 @@ function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onVie
         {inst.hasAccreditationDoc && (
           <ActionBtn tone="outline" icon="file" full onClick={() => onViewDoc(inst.id)}>
             View Accreditation Doc
+          </ActionBtn>
+        )}
+        {status === "approved" && (
+          <ActionBtn tone="softblue" icon="download" full disabled={busy === `cert:${inst.id}`} onClick={() => onCertificate(inst.id)}>
+            {busy === `cert:${inst.id}` ? "Generating…" : "HEA Accreditation Certificate (PDF)"}
           </ActionBtn>
         )}
         {status !== "approved" && (
@@ -203,6 +212,36 @@ function RegisterModal({ open, onClose, onCreated, token }) {
   );
 }
 
+// Edit the institution's accredited-programme list directly (one programme per line). Used for
+// programmes accredited outside the online workflow; workflow approvals add entries automatically.
+function ProgrammesModal({ inst, busy, onClose, onSave }) {
+  const [text, setText] = useState((inst?.accreditedPrograms || []).join("\n"));
+  useEffect(() => { setText((inst?.accreditedPrograms || []).join("\n")); }, [inst]);
+  const list = text.split("\n").map((x) => x.trim()).filter(Boolean);
+  return (
+    <Modal
+      open={!!inst}
+      onClose={onClose}
+      title={`Accredited programmes — ${inst?.institution || ""}`}
+      footer={
+        <>
+          <ActionBtn tone="outline" onClick={onClose}>Cancel</ActionBtn>
+          <ActionBtn tone="navy" disabled={busy} onClick={() => onSave(inst, list)}>{busy ? "Saving…" : `Save ${list.length} programme${list.length === 1 ? "" : "s"}`}</ActionBtn>
+        </>
+      }
+    >
+      <p className="mb-2 text-[12px] text-slate-500">One programme per line. Removing a line withdraws that programme&apos;s accreditation on the register and certificate.</p>
+      <textarea
+        rows={10}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={"Bachelor of Information & Communications Technology\nDiploma in Accountancy"}
+        className={INPUT_CLS}
+      />
+    </Modal>
+  );
+}
+
 export default function HeaInstitutionsPage() {
   const { ready, token } = usePortalGuard(["hea"]);
   const [tab, setTab] = useState("All");
@@ -211,6 +250,7 @@ export default function HeaInstitutionsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [sel, setSel] = useState(undefined);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [progFor, setProgFor] = useState(null);
   const [institutions, setInstitutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -262,6 +302,18 @@ export default function HeaInstitutionsPage() {
   async function viewDoc(id) {
     try { openBlob(await api.accreditationDoc(token, "hea", id)); }
     catch (err) { setError(err.message); }
+  }
+  async function certificate(id) {
+    setBusy(`cert:${id}`); setError(null);
+    try { openBlob(await api.heaAccreditationCertificate(token, id), "HEA-accreditation-certificate.pdf"); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
+  async function saveProgrammes(inst, list) {
+    setBusy(inst.id); setError(null);
+    try { await api.heaSetPrograms(token, inst.id, list); setProgFor(null); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
   }
 
 
@@ -339,6 +391,8 @@ export default function HeaInstitutionsPage() {
             onReturn={returnForClarification}
             onViewDoc={viewDoc}
             onSaveNote={saveNote}
+            onCertificate={certificate}
+            onEditProgrammes={setProgFor}
           />
         ) : (
           <div className="py-10 text-center text-[13px] text-slate-400">No institution selected.</div>
@@ -390,6 +444,7 @@ export default function HeaInstitutionsPage() {
       </div>
 
       <RegisterModal open={registerOpen} onClose={() => setRegisterOpen(false)} onCreated={load} token={token} />
+      <ProgrammesModal inst={progFor} busy={busy === progFor?.id} onClose={() => setProgFor(null)} onSave={saveProgrammes} />
     </PortalShell>
   );
 }

@@ -113,7 +113,8 @@ export const api = {
   myProgrammes: (token) => request(`/api/programmes/mine`, { token }),
   submitProgramme: (token, id) =>
     request(`/api/programmes/${id}/submit`, { token, method: "POST", body: "{}" }),
-  // programmes (HEA)
+  // programmes (HEA / TEVETA / ECZ decide; ZAQA reads the outcome)
+  allProgrammes: (token, status) => request(`/api/programmes${status ? `?status=${status}` : ""}`, { token }),
   pendingProgrammes: (token) => request(`/api/programmes/pending`, { token }),
   approveProgramme: (token, id) =>
     request(`/api/programmes/${id}/approve`, { token, method: "POST", body: "{}" }),

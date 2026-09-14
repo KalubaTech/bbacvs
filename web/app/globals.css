@@ -68,3 +68,9 @@
     @apply font-mono text-[11px] leading-relaxed break-all text-slate-500;
   }
 }
+
+/* Portal KPI strip: thin, always-visible horizontal scrollbar so the left↔right overflow is discoverable. */
+.stat-strip { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.stat-strip::-webkit-scrollbar { height: 6px; }
+.stat-strip::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+.stat-strip::-webkit-scrollbar-track { background: transparent; }

@@ -37,7 +37,7 @@ const OPEN_APP_STATUSES = ["submitted", "screening", "under_review", "awaiting_e
 const QUICK_ACTIONS = [
   { icon: "apps", label: "Graduate Applications", href: "/institution/applications" },
   { icon: "clipboard", label: "Qualification Proposals", href: "/institution/qualifications" },
-  { icon: "award", label: "Issue Credential", href: "/issuer/classic" },
+  { icon: "award", label: "Issue Credential", href: "/institution/issuance" },
   { icon: "registry", label: "Programmes", href: "/institution/programmes" },
 ];
 

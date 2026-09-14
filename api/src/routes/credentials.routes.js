@@ -217,7 +217,7 @@ router.get("/issuer-profile", requireAuth, requireRole(...ISSUING_ROLES), async 
 });
 
 // GET /api/credentials/accreditation-certificate (issuer) — the institution downloads its own
-// HEA accreditation certificate (available once HEA-approved).
+// Regulator accreditation certificate (HEA for higher-ed, TEVETA for TEVET) — available once approved.
 router.get("/accreditation-certificate", requireAuth, requireRole(...ISSUING_ROLES), async (req, res, next) => {
   try {
     const issuer = await Issuer.findById(req.user.issuerId).lean();

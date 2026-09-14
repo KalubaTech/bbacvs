@@ -42,7 +42,7 @@ const shortHash = (h) => (h ? `${h.slice(0, 10)}…${h.slice(-4)}` : "—");
 
 function statusOf(c) {
   if (c.kind === "Dispute") {
-    return { label: "Open dispute", tone: "purple" };
+    return { label: "Open correction request", tone: "purple" };
   }
   if (c.kind === "Suspension") return { label: "Suspended", tone: "orange" };
   if (c.kind === "Revocation") return { label: "Revoked", tone: "red" };
@@ -234,8 +234,8 @@ export default function ZaqaApplicationsPage() {
         full
         onClick={() =>
           router.push(
-            selected.kind === "Validation"
-              ? `/zaqa/validation?hash=${selected.raw.credentialHash}`
+            selected.kind === "Validation" || selected.kind === "Dispute"
+              ? `${KIND_META[selected.kind].href}?hash=${selected.raw.credentialHash}`
               : KIND_META[selected.kind].href
           )
         }

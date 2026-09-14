@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// The redesigned portal is the primary experience; the classic workbench lives at /hea/classic.
+// Legacy entry point — the portal lives in the redesigned UI.
 export default function Page() {
   redirect("/hea/dashboard");
 }

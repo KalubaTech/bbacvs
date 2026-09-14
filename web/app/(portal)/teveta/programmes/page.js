@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import PortalShell from "../../../../components/portal/shell";
 import {
-  Badge, Avatar, StatCard, StatRow, SectionCard, SearchBox, SelectPill,
+  Badge, Avatar, StatCard, StatRow, SectionCard, SearchBox, SelectPill, StatusTabs,
   ToolButton, DataTable, Pagination, usePager, KVGrid, ActionBtn,
   PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
@@ -13,13 +13,24 @@ import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 
 const STATUS_TONES = { approved: "green", pending: "amber", suspended: "red" };
 const STATUS_LABELS = { approved: "Approved", pending: "Pending Review", suspended: "Suspended" };
+const PROG_TONE = { pending: "amber", approved: "green", rejected: "red", draft: "slate" };
+const PROG_LABEL = { pending: "Pending accreditation", approved: "Accredited", rejected: "Rejected", draft: "Draft" };
+
+// TEVETA is the final accreditation authority for TEVET programmes (TEVET institutions are
+// regulated by TEVETA, not the HEA). ZAQA reads these outcomes for validation/verification.
+const PROG_TABS = [
+  { label: "Review Queue", states: ["pending"] },
+  { label: "Accredited", states: ["approved"] },
+  { label: "Rejected", states: ["rejected"] },
+  { label: "All", states: ["pending", "approved", "rejected", "draft"] },
+];
 
 function ProgrammePanel({ prog, busy, onClose, onApprove, onReject }) {
   return (
     <div>
       <PanelHeader
         title="Programme Application"
-        badge={<Badge tone="amber">Pending</Badge>}
+        badge={<Badge tone={PROG_TONE[prog.status] || "slate"}>{PROG_LABEL[prog.status] || prog.status}</Badge>}
         onClose={onClose}
       />
       <div className="mb-4 rounded-xl border border-slate-200 p-3.5">
@@ -31,7 +42,8 @@ function ProgrammePanel({ prog, busy, onClose, onApprove, onReject }) {
             { label: "NQF Level", value: prog.zqfLevel != null ? `Level ${prog.zqfLevel}` : "—" },
             { label: "Qualification Ref", value: prog.qualificationRef || "—" },
             { label: "Submitted", value: fmtDate(prog.createdAt) },
-            { label: "Status", value: <Badge tone="amber">Pending accreditation</Badge> },
+            { label: "Status", value: <Badge tone={PROG_TONE[prog.status] || "slate"}>{PROG_LABEL[prog.status] || prog.status}</Badge> },
+            { label: "Decided", value: prog.decidedAt ? fmtDate(prog.decidedAt) : "—" },
           ]}
         />
         {prog.note ? (
@@ -46,14 +58,24 @@ function ProgrammePanel({ prog, busy, onClose, onApprove, onReject }) {
         <CaseTimeline events={prog.events} />
       </SectionCard>
 
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        <ActionBtn tone="green" icon="check" full disabled={busy === prog.id} onClick={() => onApprove(prog.id)}>
-          {busy === prog.id ? "Working…" : "Accredit Programme"}
-        </ActionBtn>
-        <ActionBtn tone="softred" icon="x" full disabled={busy === prog.id} onClick={() => onReject(prog.id)}>
-          Reject
-        </ActionBtn>
-      </div>
+      {prog.status === "pending" ? (
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <ActionBtn tone="green" icon="check" full disabled={busy === prog.id} onClick={() => onApprove(prog.id)}>
+            {busy === prog.id ? "Working…" : "Accredit Programme"}
+          </ActionBtn>
+          <ActionBtn tone="softred" icon="x" full disabled={busy === prog.id} onClick={() => onReject(prog.id)}>
+            Reject
+          </ActionBtn>
+        </div>
+      ) : (
+        <p className="text-[12px] text-slate-400">
+          {prog.status === "approved"
+            ? "Accredited by TEVETA — ZAQA reads this decision for validation and verification."
+            : prog.status === "rejected"
+            ? "Rejected — the provider may revise and resubmit."
+            : "Draft — not yet submitted by the provider."}
+        </p>
+      )}
     </div>
   );
 }
@@ -154,6 +176,7 @@ export default function TevetaProgrammesPage() {
   const [busy, setBusy] = useState(null);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [progTab, setProgTab] = useState("Review Queue");
   const [sel, setSel] = useState(null); // { type: "programme" | "provider", id }
 
   const load = useCallback(async () => {
@@ -163,7 +186,7 @@ export default function TevetaProgrammesPage() {
       const [all, pend, pp] = await Promise.all([
         api.tevetaInstitutions(token),
         api.tevetaPending(token),
-        api.pendingProgrammes(token),
+        api.allProgrammes(token),
       ]);
       const byId = new Map();
       for (const i of [...(pend.pending || []), ...(all.institutions || [])]) {
@@ -235,6 +258,12 @@ export default function TevetaProgrammesPage() {
   });
   const pg = usePager(providerRows, 10, [q, statusFilter]);
 
+  const progTabs = PROG_TABS.map((t) => ({ label: t.label, count: progs.filter((p) => t.states.includes(p.status)).length }));
+  const progStates = PROG_TABS.find((t) => t.label === progTab)?.states || ["pending"];
+  const progRows = progs.filter((p) => progStates.includes(p.status));
+  const pendingProgs = progs.filter((p) => p.status === "pending").length;
+  const accreditedProgs = progs.filter((p) => p.status === "approved").length;
+
   const selectedProg = sel?.type === "programme" ? progs.find((p) => String(p.id) === sel.id) || null : null;
   const selectedInst = sel?.type === "provider" ? insts.find((i) => String(i.id) === sel.id) || null : null;
 
@@ -284,8 +313,9 @@ export default function TevetaProgrammesPage() {
       panelKey={sel ? `${sel.type}-${sel.id}` : null}
       panelWidth="w-[420px]"
     >
-      <StatRow cols={5}>
-        <StatCard icon="clipboard" iconTone="orange" label="Programme Applications" value={String(progs.length)} />
+      <StatRow cols={6}>
+        <StatCard icon="clipboard" iconTone="orange" label="Programmes Awaiting Review" value={String(pendingProgs)} />
+        <StatCard icon="award" iconTone="softgreen" label="Accredited Programmes" value={String(accreditedProgs)} />
         <StatCard icon="bank" iconTone="softblue" label="Registered Providers" value={String(insts.length)} />
         <StatCard icon="clock" iconTone="amber" label="Providers Pending" value={String(counts.pending)} />
         <StatCard icon="checkCircle" iconTone="softgreen" label="Approved Providers" value={String(counts.approved)} />
@@ -295,27 +325,31 @@ export default function TevetaProgrammesPage() {
       <ErrorBanner error={error} onRetry={load} />
 
       <SectionCard
-        title="Pending Programme Applications"
+        title="Programme Accreditation Register"
         className="mb-5"
-        action={<Badge tone={progs.length ? "amber" : "slate"}>{progs.length} awaiting review</Badge>}
+        action={<Badge tone={pendingProgs ? "amber" : "slate"}>{pendingProgs} awaiting review</Badge>}
         pad="p-0"
       >
+        <div className="px-4 pt-1">
+          <StatusTabs tabs={progTabs} active={progTab} onChange={setProgTab} />
+        </div>
         <DataTable
           rowKey="id"
           activeKey={selectedProg?.id}
           onRowClick={(r) => setSel({ type: "programme", id: String(r.id) })}
           loading={loading}
-          emptyText="No programme applications awaiting accreditation."
+          emptyText={progTab === "Review Queue" ? "No programme applications awaiting accreditation." : `No programmes under ${progTab}.`}
           columns={[
             { key: "name", label: "Programme", render: (r) => <span className="font-semibold text-slate-800">{r.name}</span> },
             { key: "institution", label: "Provider", render: (r) => r.institution || "—" },
             { key: "zqfLevel", label: "NQF Level", render: (r) => (r.zqfLevel != null ? <Badge tone="blue">Level {r.zqfLevel}</Badge> : "—") },
             { key: "qualificationRef", label: "Qualification Ref", render: (r) => r.qualificationRef || "—" },
             { key: "createdAt", label: "Submitted", render: (r) => fmtDate(r.createdAt) },
+            { key: "status", label: "Status", render: (r) => <Badge tone={PROG_TONE[r.status] || "slate"}>{PROG_LABEL[r.status] || r.status}</Badge> },
             {
               key: "actions",
               label: "Actions",
-              render: (r) => (
+              render: (r) => r.status !== "pending" ? <span className="text-[11px] text-slate-400">{r.decidedAt ? `Decided ${fmtDate(r.decidedAt)}` : "—"}</span> : (
                 <span className="flex items-center gap-2">
                   <ActionBtn
                     tone="green"
@@ -339,7 +373,7 @@ export default function TevetaProgrammesPage() {
               ),
             },
           ]}
-          rows={progs}
+          rows={progRows}
         />
       </SectionCard>
 

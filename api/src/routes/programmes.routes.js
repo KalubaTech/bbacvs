@@ -14,11 +14,25 @@ import { pushEvent } from "../services/history.service.js";
 
 const router = Router();
 
+// Regulator that accredits programmes for an institution sector (the highest level of
+// programme approval). ZAQA never accredits programmes — it reads the regulator's decisions
+// for validation and verification.
+export function regulatorFor(sector) {
+  if (sector === "tevet") return "TEVETA";
+  if (sector === "secondary") return "ECZ";
+  return "HEA";
+}
+
 function view(p) {
+  const sector = p.issuer && typeof p.issuer === "object" ? p.issuer.sector : undefined;
   return {
     id: p._id, name: p.name, zqfLevel: p.zqfLevel, status: p.status,
     institution: p.institution, note: p.note, createdAt: p.createdAt,
     qualificationRef: p.qualificationRef,
+    sector, regulator: sector ? regulatorFor(sector) : undefined,
+    decidedAt: ["approved", "rejected"].includes(p.status)
+      ? [...(p.events || [])].reverse().find((e) => /accredited|rejected/.test(e.action || ""))?.at
+      : undefined,
     events: p.events || [],
   };
 }
@@ -100,6 +114,26 @@ function regulates(role, sector) {
   if (role === ROLES.HEA) return sector !== "tevet" && sector !== "secondary";
   return false;
 }
+
+// GET /api/programmes (HEA/TEVETA/ECZ/ZAQA/admin) — every programme with its accreditation
+// outcome. Regulators see their own sector; ZAQA (and admin) see the national picture, read
+// only — programme accreditation is decided by HEA / TEVETA / ECZ, and ZAQA taps into those
+// decisions for validation and verification. ?status= narrows to one lifecycle state.
+const readerRoles = [requireAuth, requireRole(ROLES.HEA, ROLES.TEVETA, ROLES.ECZ, ROLES.ZAQA, ROLES.ADMIN)];
+router.get("/", ...readerRoles, async (req, res, next) => {
+  try {
+    const q = req.query.status ? { status: req.query.status } : {};
+    const rows = await Programme.find(q).sort({ createdAt: -1 }).limit(500).populate("issuer", "sector").lean();
+    const role = req.user.role;
+    const mine = rows.filter((p) => {
+      const sector = p.issuer?.sector;
+      if (role === ROLES.ZAQA || role === ROLES.ADMIN) return true;
+      if (role === ROLES.ECZ) return sector === "secondary";
+      return regulates(role, sector);
+    });
+    res.json({ programmes: mine.map(view) });
+  } catch (err) { next(err); }
+});
 
 // GET /api/programmes/pending (HEA/TEVETA) — programmes awaiting accreditation, scoped to the
 // sector the actor regulates.

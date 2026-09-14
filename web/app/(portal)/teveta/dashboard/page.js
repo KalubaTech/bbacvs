@@ -5,7 +5,7 @@ import Link from "next/link";
 import PortalShell from "../../../../components/portal/shell";
 import {
   Badge, Avatar, StatCard, StatRow, SectionCard, SelectPill, SearchBox,
-  ToolButton, DataTable, Pagination, usePager, KVGrid, ActionBtn,
+  ToolButton, DataTable, Pagination, usePager, KVGrid, ActionBtn, Modal,
   PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
 import CaseTimeline from "../../../../components/portal/CaseTimeline";
@@ -17,7 +17,88 @@ const STATUS_TONE = { pending: "amber", approved: "green", suspended: "red" };
 
 const short = (v) => (v && v.length > 22 ? `${v.slice(0, 12)}…${v.slice(-6)}` : v || "—");
 
-function DetailPanel({ inst, busy, onClose, onApprove, onReject, onSuspend, onReinstate, onViewDoc }) {
+const INPUT_CLS =
+  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-100";
+const EMPTY_REG = { institution: "", officerName: "", officerEmail: "", officerPassword: "", metamaskAddress: "" };
+
+// Register a TEVET provider directly (TEVETA-registered, approved + authorised on-chain).
+function RegisterModal({ open, onClose, onCreated, token }) {
+  const [form, setForm] = useState(EMPTY_REG);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  async function save() {
+    setSaving(true); setError(null);
+    try {
+      const body = { ...form };
+      if (!body.metamaskAddress) delete body.metamaskAddress;
+      await api.tevetaRegister(token, body);
+      setForm(EMPTY_REG);
+      await onCreated();
+      onClose();
+    } catch (err) { setError(err.message); }
+    finally { setSaving(false); }
+  }
+  const fields = [
+    { key: "institution", label: "Provider Name", placeholder: "e.g. Lusaka Vocational Training Centre" },
+    { key: "officerName", label: "Officer Full Name", placeholder: "Jane Banda" },
+    { key: "officerEmail", label: "Officer Email", placeholder: "registrar@lvtc.zm", type: "email" },
+    { key: "officerPassword", label: "Officer Password", placeholder: "min 8 characters", type: "password" },
+    { key: "metamaskAddress", label: "Wallet Address (optional)", placeholder: "0x… — leave blank for server-signed" },
+  ];
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Register TEVET Provider"
+      footer={
+        <>
+          <ActionBtn tone="outline" onClick={onClose}>Cancel</ActionBtn>
+          <ActionBtn tone="orange" disabled={saving} onClick={save}>{saving ? "Registering on-chain…" : "Register Provider"}</ActionBtn>
+        </>
+      }
+    >
+      <p className="mb-3 text-[12px] text-slate-500">
+        Onboards a technical, vocational or entrepreneurship training provider as a TEVETA-approved issuer
+        (authorised on-chain, ~30–60s) and creates its issuing-officer login.
+      </p>
+      <div className="space-y-3">
+        {fields.map((f) => (
+          <div key={f.key}>
+            <label className="mb-1 block text-[11px] font-semibold text-slate-500">{f.label}</label>
+            <input className={INPUT_CLS} type={f.type || "text"} value={form[f.key]} onChange={set(f.key)} placeholder={f.placeholder} />
+          </div>
+        ))}
+      </div>
+      {error && <div className="mt-3 text-[12px] font-medium text-red-600">{error}</div>}
+    </Modal>
+  );
+}
+
+// Edit a provider's accredited-programme list directly (one per line).
+function ProgrammesModal({ inst, busy, onClose, onSave }) {
+  const [text, setText] = useState((inst?.accreditedPrograms || []).join("\n"));
+  useEffect(() => { setText((inst?.accreditedPrograms || []).join("\n")); }, [inst]);
+  const list = text.split("\n").map((x) => x.trim()).filter(Boolean);
+  return (
+    <Modal
+      open={!!inst}
+      onClose={onClose}
+      title={`Accredited programmes — ${inst?.institution || ""}`}
+      footer={
+        <>
+          <ActionBtn tone="outline" onClick={onClose}>Cancel</ActionBtn>
+          <ActionBtn tone="orange" disabled={busy} onClick={() => onSave(inst, list)}>{busy ? "Saving…" : `Save ${list.length} programme${list.length === 1 ? "" : "s"}`}</ActionBtn>
+        </>
+      }
+    >
+      <p className="mb-2 text-[12px] text-slate-500">One programme per line. Programmes accredited through the online workflow are added here automatically.</p>
+      <textarea rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Craft Certificate in Automotive Mechanics\nDiploma in Electrical Engineering"} className={INPUT_CLS} />
+    </Modal>
+  );
+}
+
+function DetailPanel({ inst, busy, onClose, onApprove, onReject, onSuspend, onReinstate, onViewDoc, onCertificate, onEditProgrammes }) {
   const status = inst.heaStatus || "approved";
   return (
     <div>
@@ -62,7 +143,11 @@ function DetailPanel({ inst, busy, onClose, onApprove, onReject, onSuspend, onRe
 
       <SectionCard
         title="Accredited Programmes"
-        action={<span className="text-[11px] font-semibold text-slate-500">{(inst.accreditedPrograms || []).length}</span>}
+        action={
+          <button type="button" onClick={() => onEditProgrammes(inst)} className="text-[11px] font-semibold text-orange-600 hover:underline">
+            Edit ({(inst.accreditedPrograms || []).length})
+          </button>
+        }
         className="mb-4"
         pad="p-3.5"
       >
@@ -101,9 +186,14 @@ function DetailPanel({ inst, busy, onClose, onApprove, onReject, onSuspend, onRe
           </>
         )}
         {status === "approved" && (
-          <ActionBtn tone="softorange" icon="pause" full disabled={busy === inst.id} onClick={() => onSuspend(inst.id)}>
-            {busy === inst.id ? "Working…" : "Suspend Institution"}
-          </ActionBtn>
+          <>
+            <ActionBtn tone="softblue" icon="download" full disabled={busy === `cert:${inst.id}`} onClick={() => onCertificate(inst.id)}>
+              {busy === `cert:${inst.id}` ? "Generating…" : "TEVETA Accreditation Certificate (PDF)"}
+            </ActionBtn>
+            <ActionBtn tone="softorange" icon="pause" full disabled={busy === inst.id} onClick={() => onSuspend(inst.id)}>
+              {busy === inst.id ? "Working…" : "Suspend Institution"}
+            </ActionBtn>
+          </>
         )}
         {status === "suspended" && (
           <ActionBtn tone="softgreen" icon="check" full disabled={busy === inst.id} onClick={() => onReinstate(inst.id)}>
@@ -120,6 +210,8 @@ export default function TevetaDashboardPage() {
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [sel, setSel] = useState(null);
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [progFor, setProgFor] = useState(null);
   const [institutions, setInstitutions] = useState([]);
   const [pending, setPending] = useState([]);
   const [monitoring, setMonitoring] = useState(null);
@@ -204,6 +296,18 @@ export default function TevetaDashboardPage() {
     try { openBlob(await api.accreditationDoc(token, "teveta", id)); }
     catch (err) { setError(err.message); }
   }
+  async function certificate(id) {
+    setBusy(`cert:${id}`); setError(null);
+    try { openBlob(await api.tevetaAccreditationCertificate(token, id), "TEVETA-accreditation-certificate.pdf"); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
+  async function saveProgrammes(inst, list) {
+    setBusy(inst.id); setError(null);
+    try { await api.tevetaSetPrograms(token, inst.id, list); setProgFor(null); await load(); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
 
   const counts = institutions.reduce((m, i) => {
     const s = i.heaStatus || "approved";
@@ -238,6 +342,11 @@ export default function TevetaDashboardPage() {
       portal="teveta"
       active="dashboard"
       title="TEVETA Portal – Regulatory Dashboard"
+      actions={
+        <ActionBtn tone="orange" icon="plus" onClick={() => setRegisterOpen(true)}>
+          Register Provider
+        </ActionBtn>
+      }
       panel={
         selected ? (
           <DetailPanel
@@ -249,6 +358,8 @@ export default function TevetaDashboardPage() {
             onSuspend={suspend}
             onReinstate={reinstate}
             onViewDoc={viewDoc}
+            onCertificate={certificate}
+            onEditProgrammes={setProgFor}
           />
         ) : null
       }
@@ -400,6 +511,9 @@ export default function TevetaDashboardPage() {
           footer={<Pagination {...pg.props} className="border-t border-slate-100" />}
         />
       </div>
+
+      <RegisterModal open={registerOpen} onClose={() => setRegisterOpen(false)} onCreated={load} token={token} />
+      <ProgrammesModal inst={progFor} busy={busy === progFor?.id} onClose={() => setProgFor(null)} onSave={saveProgrammes} />
     </PortalShell>
   );
 }

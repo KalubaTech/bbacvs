@@ -24,7 +24,7 @@ function credStatus(c) {
 
 const shortHash = (h) => (h && h.length > 18 ? `${h.slice(0, 10)}…${h.slice(-6)}` : h || "—");
 
-function DetailPanel({ user, creds, cred, busy, error, onClose, onQR, onPDF, onCorrect }) {
+function DetailPanel({ user, creds, cred, busy, error, onClose, onQR, onPDF, onCertificate, onCorrect }) {
   if (!cred) {
     const verified = creds.some((c) => c.zaqaValidation === "validated");
     return (
@@ -106,6 +106,16 @@ function DetailPanel({ user, creds, cred, busy, error, onClose, onQR, onPDF, onC
             {busy === "pdf" ? "Preparing…" : "Download PDF"}
           </ActionBtn>
         </div>
+        {cred.zaqaValidation === "validated" && cred.status !== "revoked" && cred.status !== "suspended" ? (
+          <ActionBtn tone="darkgreen" icon="award" full disabled={busy === "cert"} onClick={() => onCertificate(cred)}>
+            {busy === "cert" ? "Preparing certificate…" : "Download ZAQA Verification Certificate"}
+          </ActionBtn>
+        ) : (
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-[12px] text-slate-500">
+            The ZAQA Certificate of Verification and Evaluation becomes available for download once this credential
+            receives ZAQA final validation.
+          </div>
+        )}
         <Link href={`/verify?hash=${cred.credentialHash}`} className="block">
           <ActionBtn tone="outline" icon="shieldCheck" full>Verify online</ActionBtn>
         </Link>
@@ -174,6 +184,17 @@ export default function GraduateDashboardPage() {
     finally { setBusy(null); }
   }
 
+  // ZAQA "Certificate of Verification and Evaluation of Qualification" — public endpoint, but
+  // only issued once the credential is on-chain VERIFIED and ZAQA-validated.
+  async function downloadCertificate(cred) {
+    setBusy("cert");
+    setPanelError(null);
+    try {
+      openBlob(await api.downloadVerificationCertificate(cred.credentialHash), `ZAQA-verification-${cred.credentialHash.slice(0, 10)}.pdf`);
+    } catch (err) { setPanelError(err.message); }
+    finally { setBusy(null); }
+  }
+
   function openCorrect(cred) {
     setCorrectFor(cred);
     setCorrectMsg("");
@@ -233,6 +254,7 @@ export default function GraduateDashboardPage() {
           onClose={() => { setSel(null); setPanelError(null); }}
           onQR={showQR}
           onPDF={downloadPDF}
+          onCertificate={downloadCertificate}
           onCorrect={openCorrect}
         />
       }
@@ -378,6 +400,17 @@ export default function GraduateDashboardPage() {
                   >
                     PDF
                   </button>
+                  {r.zaqaValidation === "validated" && r.status !== "revoked" && r.status !== "suspended" && (
+                    <button
+                      onClick={() => { setSel(r.credentialHash); downloadCertificate(r); }}
+                      disabled={busy === "cert"}
+                      aria-label="Download ZAQA verification certificate"
+                      title="Download ZAQA verification certificate"
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40"
+                    >
+                      Certificate
+                    </button>
+                  )}
                 </span>
               ),
             },

@@ -275,7 +275,7 @@ export default function VerifyPage() {
                       <Chip ok label="ECZ secondary authority" />
                     ) : (
                       <Chip ok={result.governance.heaStatus === "approved"}
-                        label={`HEA: ${result.governance.heaStatus || "—"}`} />
+                        label={`${result.governance.regulator || "HEA"}: ${result.governance.heaStatus || "—"}`} />
                     )}
                     <Chip ok={result.governance.zaqaTrusted}
                       label={result.governance.zaqaTrusted ? "ZAQA trusted issuer" : "Not in ZAQA registry"} />

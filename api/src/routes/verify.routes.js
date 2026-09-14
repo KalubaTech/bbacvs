@@ -188,6 +188,13 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
+// Statement of the regulator under which the awarding institution is registered.
+const REGULATOR_STATEMENT = {
+  higher_ed: "By the Higher Education Authority established by the Higher Education Act No. 4 of 2013 of the Republic of Zambia.",
+  tevet: "By the Technical Education, Vocational and Entrepreneurship Training Authority (TEVETA) established by the TEVET Act No. 13 of 1998 of the Republic of Zambia.",
+  secondary: "By the Examinations Council of Zambia established by the Examinations Council of Zambia Act No. 15 of 1983 of the Republic of Zambia.",
+};
+
 // GET /api/verify/:hash/certificate (Public) — download the ZAQA "Certificate of Verification
 // and Evaluation of Qualification" as a PDF with a ZAQA-signed QR. Only available once the
 // credential is on-chain VERIFIED and ZAQA final validation = "validated".
@@ -232,7 +239,11 @@ router.get("/:hash/certificate", async (req, res, next) => {
     const validatedAt = meta.zaqaValidatedAt
       ? new Date(meta.zaqaValidatedAt).toLocaleDateString("en-GB")
       : "—";
+    // The recognising regulator follows the issuing institution's sector: HEA for higher
+    // education, TEVETA for TEVET institutions, ECZ for secondary certification.
+    const issuerDoc = meta.issuer ? await Issuer.findById(meta.issuer).select("sector").lean() : null;
     const pdf = await buildVerificationCertificatePDF({
+      recognisedBy: REGULATOR_STATEMENT[issuerDoc?.sector] || REGULATOR_STATEMENT.higher_ed,
       holder: meta.subjectName,
       nationalId: maskNationalId(meta.holderNationalId) || "—",
       zaqaRef: meta.zaqaRef || "—",

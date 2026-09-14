@@ -13,7 +13,8 @@ import { notifyEmail, notifyIssuerOfficers, notifyRole } from "../services/notif
 const router = Router();
 
 // Category → lead authority (spec §30). Compliance/accreditation categories go to the
-// regulator of the credential's SECTOR — HEA for higher-ed, TEVETA for TEVET institutions.
+// regulator of the credential's SECTOR — HEA for higher-ed, TEVETA for TEVET institutions,
+// ECZ for secondary schools.
 const ROUTE = {
   ecz_result: "ecz",
   institution_compliance: "hea",
@@ -30,6 +31,7 @@ async function leadAuthorityFor(category, cred) {
   if (SECTOR_ROUTED.has(category) && cred.issuer) {
     const issuer = await Issuer.findById(cred.issuer).select("sector").lean();
     if (issuer?.sector === "tevet") lead = "teveta";
+    else if (issuer?.sector === "secondary") lead = "ecz";
   }
   return lead;
 }

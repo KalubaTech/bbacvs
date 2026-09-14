@@ -19,16 +19,6 @@ const PANEL_XL = {
   "w-[620px]": "xl:w-[620px]",
 };
 
-// Where each portal's classic (legacy functional) workbench lives.
-const CLASSIC = {
-  zaqa: "/zaqa/classic",
-  hea: "/hea/classic",
-  ecz: "/ecz/classic",
-  teveta: "/teveta/classic",
-  institution: "/issuer/classic",
-  graduate: "/student/classic",
-};
-
 const ROLE_LABEL = {
   admin: "Platform Admin",
   zaqa: "ZAQA Officer",
@@ -312,15 +302,6 @@ export default function PortalShell({
                     >
                       <Icon name="user" className="h-4 w-4 text-slate-400" /> My account
                     </Link>
-                    {CLASSIC[portal] && (
-                      <Link
-                        href={CLASSIC[portal]}
-                        className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-slate-600 hover:bg-slate-50"
-                        onClick={() => setMenuOpen(false)}
-                      >
-                        <Icon name="grid" className="h-4 w-4 text-slate-400" /> Classic portal
-                      </Link>
-                    )}
                     <button
                       onClick={signOut}
                       className="flex w-full items-center gap-2.5 border-t border-slate-100 px-4 py-2 text-left text-[13px] font-medium text-red-600 hover:bg-red-50"

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import PortalShell from "../../../../components/portal/shell";
 import {
-  Badge, StatCard, StatRow, SectionCard, SelectPill, SearchBox,
+  Badge, StatCard, StatRow, SectionCard, SelectPill, SearchBox, StatusTabs,
   ToolButton, DataTable, Pagination, usePager, KVGrid, ActionBtn,
   PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
@@ -12,7 +12,18 @@ import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 import { api } from "../../../../lib/api";
 
 const STATUS_TONE = { pending: "amber", approved: "green", rejected: "red", draft: "slate" };
-const STATUS_LABEL = { pending: "Pending Review", approved: "Approved", rejected: "Rejected", draft: "Draft" };
+const STATUS_LABEL = { pending: "Pending Review", approved: "Accredited", rejected: "Rejected", draft: "Draft" };
+
+// Tabs over the full accreditation register — the review queue plus every decided programme.
+// HEA is the final authority on higher-education programme accreditation; ZAQA reads these
+// outcomes for validation and verification and never accredits programmes itself.
+const TABS = [
+  { label: "Review Queue", states: ["pending"] },
+  { label: "Accredited", states: ["approved"] },
+  { label: "Rejected", states: ["rejected"] },
+  { label: "Drafts (not yet submitted)", states: ["draft"] },
+  { label: "All", states: ["pending", "approved", "rejected", "draft"] },
+];
 
 function DetailPanel({ prog, busy, onClose, onApprove, onReject }) {
   return (
@@ -45,29 +56,41 @@ function DetailPanel({ prog, busy, onClose, onApprove, onReject }) {
       <div className="mb-4 rounded-xl border border-slate-200 p-3.5">
         <div className="mb-1 text-[12px] font-semibold text-slate-800">Review Guidance</div>
         <p className="text-[12px] leading-relaxed text-slate-600">
-          Approving adds the programme to the institution&apos;s accredited-programme list, which is
-          surfaced to ZAQA and to public verifiers. Rejection returns the programme to the
-          institution with your reason.
+          Accrediting adds the programme to the institution&apos;s accredited-programme list. HEA is the
+          final approval authority for higher-education programmes; ZAQA taps into this decision for
+          credential validation and verification. Rejection returns the programme to the institution
+          with your reason.
         </p>
       </div>
 
-      <div>
-        <div className="mb-2 text-[12.5px] font-bold text-slate-900">Actions</div>
-        <div className="flex flex-wrap gap-2.5">
-          <ActionBtn tone="green" icon="check" disabled={busy === prog.id} onClick={() => onApprove(prog.id)}>
-            {busy === prog.id ? "Working…" : "Recommend Approval"}
-          </ActionBtn>
-          <ActionBtn tone="softred" icon="x" disabled={busy === prog.id} onClick={() => onReject(prog.id)}>
-            Reject
-          </ActionBtn>
+      {prog.status === "pending" ? (
+        <div>
+          <div className="mb-2 text-[12.5px] font-bold text-slate-900">Actions</div>
+          <div className="flex flex-wrap gap-2.5">
+            <ActionBtn tone="green" icon="check" disabled={busy === prog.id} onClick={() => onApprove(prog.id)}>
+              {busy === prog.id ? "Working…" : "Accredit Programme"}
+            </ActionBtn>
+            <ActionBtn tone="softred" icon="x" disabled={busy === prog.id} onClick={() => onReject(prog.id)}>
+              Reject
+            </ActionBtn>
+          </div>
         </div>
-      </div>
+      ) : (
+        <p className="text-[12px] text-slate-400">
+          {prog.status === "approved"
+            ? `Accredited${prog.decidedAt ? ` on ${fmtDate(prog.decidedAt)}` : ""} — this decision is read by ZAQA for validation.`
+            : prog.status === "rejected"
+            ? "Rejected — the institution may revise and resubmit."
+            : "Draft — the institution has not submitted this programme yet."}
+        </p>
+      )}
     </div>
   );
 }
 
 export default function HeaProgrammesPage() {
   const { ready, token } = usePortalGuard(["hea"]);
+  const [tab, setTab] = useState("Review Queue");
   const [q, setQ] = useState("");
   const [instFilter, setInstFilter] = useState("");
   const [levelFilter, setLevelFilter] = useState("");
@@ -83,7 +106,7 @@ export default function HeaProgrammesPage() {
     setError(null);
     try {
       const [progs, inst] = await Promise.all([
-        api.pendingProgrammes(token),
+        api.allProgrammes(token),
         api.heaInstitutions(token),
       ]);
       setProgrammes(progs.programmes || []);
@@ -110,24 +133,33 @@ export default function HeaProgrammesPage() {
   }
 
 
-  const accreditedTotal = institutions.reduce((n, i) => n + (i.accreditedPrograms?.length || 0), 0);
+  const byState = programmes.reduce((m, p) => { m[p.status] = (m[p.status] || 0) + 1; return m; }, {});
+  // Accredited programmes = every programme the HEA has approved, plus any recorded directly on
+  // the institution register (legacy entries without a programme record).
+  const accreditedNames = new Set(programmes.filter((p) => p.status === "approved").map((p) => `${p.institution}::${p.name}`));
+  institutions.forEach((i) => (i.accreditedPrograms || []).forEach((n) => accreditedNames.add(`${i.institution}::${n}`)));
   const kpis = [
-    { icon: "folder", iconTone: "purple", label: "In Review Queue", value: String(programmes.length) },
-    { icon: "shieldCheck", iconTone: "softgreen", label: "Accredited Programmes", value: String(accreditedTotal) },
+    { icon: "folder", iconTone: "purple", label: "In Review Queue", value: String(byState.pending || 0) },
+    { icon: "shieldCheck", iconTone: "softgreen", label: "Accredited Programmes", value: String(accreditedNames.size) },
+    { icon: "x", iconTone: "softred", label: "Rejected", value: String(byState.rejected || 0) },
     { icon: "registry", iconTone: "softblue", label: "Linked to NQF Register", value: String(programmes.filter((p) => p.qualificationRef).length) },
-    { icon: "bank", iconTone: "amber", label: "Institutions With Submissions", value: String(new Set(programmes.map((p) => p.institution)).size) },
+    { icon: "bank", iconTone: "amber", label: "Institutions With Programmes", value: String(new Set(programmes.map((p) => p.institution)).size) },
   ];
+
+  const tabs = TABS.map((t) => ({ label: t.label, count: programmes.filter((p) => t.states.includes(p.status)).length }));
+  const activeStates = TABS.find((t) => t.label === tab)?.states || ["pending"];
 
   const progInstitutions = [...new Set(programmes.map((p) => p.institution).filter(Boolean))];
   const levels = [...new Set(programmes.map((p) => p.zqfLevel).filter(Boolean))].sort((a, b) => a - b);
 
   const rows = programmes.filter(
     (r) =>
+      activeStates.includes(r.status) &&
       (!instFilter || r.institution === instFilter) &&
       (!levelFilter || String(r.zqfLevel) === String(levelFilter)) &&
       (!q || ((r.name || "") + (r.institution || "") + (r.qualificationRef || "")).toLowerCase().includes(q.toLowerCase()))
   );
-  const pager = usePager(rows, 10, [q, instFilter, levelFilter]);
+  const pager = usePager(rows, 10, [tab, q, instFilter, levelFilter]);
   if (!ready) return null;
   const selected = sel === null ? null : programmes.find((r) => r.id === sel) || rows[0] || null;
 
@@ -136,7 +168,8 @@ export default function HeaProgrammesPage() {
     { key: "institution", label: "Institution", render: (r) => r.institution || "—" },
     { key: "qualificationRef", label: "Qualification Ref.", render: (r) => r.qualificationRef || "—" },
     { key: "zqfLevel", label: "NQF Level", tdClass: "text-center", thClass: "text-center", render: (r) => r.zqfLevel || "—" },
-    { key: "createdAt", label: "Submission Date", csv: (r) => fmtDate(r.createdAt), render: (r) => fmtDate(r.createdAt) },
+    { key: "createdAt", label: "Submitted", csv: (r) => fmtDate(r.createdAt), render: (r) => fmtDate(r.createdAt) },
+    { key: "decidedAt", label: "Decided", csv: (r) => (r.decidedAt ? fmtDate(r.decidedAt) : ""), render: (r) => (r.decidedAt ? fmtDate(r.decidedAt) : "—") },
     {
       key: "status", label: "Status", csv: (r) => STATUS_LABEL[r.status] || r.status,
       render: (r) => <Badge tone={STATUS_TONE[r.status] || "slate"}>{STATUS_LABEL[r.status] || r.status}</Badge>,
@@ -159,27 +192,20 @@ export default function HeaProgrammesPage() {
             onReject={reject}
           />
         ) : (
-          <div className="py-10 text-center text-[13px] text-slate-400">No programmes awaiting review.</div>
+          <div className="py-10 text-center text-[13px] text-slate-400">Select a programme to see its record.</div>
         )
       }
       panelKey={selected?.id}
       panelWidth="w-[440px]"
     >
-      <StatRow cols={4}>
+      <StatRow cols={5}>
         {kpis.map((k) => (
           <StatCard key={k.label} {...k} />
         ))}
       </StatRow>
 
-      <SectionCard
-        title={
-          <span className="flex items-center gap-2">
-            Programme Accreditation Queue
-            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-bold text-purple-700">{programmes.length}</span>
-          </span>
-        }
-        pad="p-4"
-      >
+      <SectionCard title="Programme Accreditation Register" pad="p-4">
+        <StatusTabs tabs={tabs} active={tab} onChange={setTab} />
         <ErrorBanner error={error} onRetry={load} />
         <div className="mb-4 flex flex-wrap items-center gap-2.5">
           <SearchBox className="w-72" placeholder="Search programmes..." value={q} onChange={setQ} />
@@ -195,7 +221,7 @@ export default function HeaProgrammesPage() {
             onChange={setLevelFilter}
             options={levels.map((l) => ({ value: String(l), label: `Level ${l}` }))}
           />
-          <ToolButton icon="download" onClick={() => exportCSV("hea-programme-queue", columns, rows)}>Export</ToolButton>
+          <ToolButton icon="download" onClick={() => exportCSV("hea-programme-register", columns, rows)}>Export</ToolButton>
           <ToolButton icon="refresh" className="ml-auto" onClick={load}>Refresh</ToolButton>
         </div>
         <DataTable
@@ -205,7 +231,7 @@ export default function HeaProgrammesPage() {
           onRowClick={(r) => setSel(r.id)}
           columns={columns}
           rows={pager.rows}
-          emptyText="No programmes awaiting accreditation."
+          emptyText={tab === "Review Queue" ? "No programmes awaiting accreditation." : `No programmes under ${tab}.`}
           footer={<Pagination {...pager.props} className="border-t border-slate-100" />}
         />
       </SectionCard>

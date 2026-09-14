@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Children, useEffect, useState } from "react";
 import Icon from "./icons";
 
 /* ---------------------------------------------------------------- tones --- */
@@ -106,9 +106,22 @@ export function StatCard({ icon, iconTone = "softblue", label, value, delta, del
 }
 
 export function StatRow({ children, cols }) {
-  const n = cols || (Array.isArray(children) ? children.length : 4);
-  const grid = { 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4", 5: "lg:grid-cols-5", 6: "lg:grid-cols-6" }[Math.min(n, 6)];
-  return <div className={`mb-5 grid grid-cols-2 gap-3.5 md:grid-cols-3 ${grid}`}>{children}</div>;
+  // A single horizontal strip. Cards share the row on wide screens; when the viewport is too
+  // narrow for every card, the strip overflows and scrolls left ↔ right instead of squashing
+  // labels, so the same row works on the institution, HEA, ECZ, ZAQA and TEVETA dashboards.
+  const items = Children.toArray(children).filter(Boolean);
+  const n = cols || items.length || 4;
+  return (
+    <div className="stat-strip -mx-4 mb-5 overflow-x-auto px-4 pb-1.5 sm:-mx-6 sm:px-6 xl:mx-0 xl:px-0" data-cols={n}>
+      <div className="flex snap-x gap-3.5">
+        {items.map((c, i) => (
+          <div key={c.key ?? i} className="flex min-w-[184px] flex-1 snap-start flex-col [&>*]:flex-1">
+            {c}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /* ----------------------------------------------------------------- cards --- */

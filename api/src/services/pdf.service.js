@@ -99,7 +99,7 @@ export function buildVerificationCertificatePDF(data) {
     y += 6;
 
     para("A registered and recognised institution:",
-      "By the Higher Education Authority established by the Higher Education Act No. 4 of 2013 of the Republic of Zambia.");
+      data.recognisedBy || "By the Higher Education Authority established by the Higher Education Act No. 4 of 2013 of the Republic of Zambia.");
     para("This qualification is recognised in Zambia as:", data.recognisedAs);
     doc.font("Helvetica-Bold").fillColor("#111").fontSize(11)
       .text(`At Level ${data.zqfLevel ?? "—"} of the Zambia Qualifications Framework.`, pad, y, { width: right - pad });
@@ -183,7 +183,11 @@ export const ACCREDITING_AUTHORITIES = {
 export function buildAccreditationCertificatePDF(data) {
   const authority = data.authority || ACCREDITING_AUTHORITIES.HEA;
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 56 });
+    // STRICTLY ONE PAGE: every block is laid out at explicit coordinates inside a fixed
+    // budget, and the programme list is clipped (with an "and N more" line) rather than
+    // ever spilling onto a second page. pdfkit auto-paginates on overflow, so nothing below
+    // relies on flowing text past the bottom margin.
+    const doc = new PDFDocument({ size: "A4", margin: 56, autoFirstPage: true });
     const chunks = [];
     doc.on("data", (c) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -191,54 +195,93 @@ export function buildAccreditationCertificatePDF(data) {
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
     const width = right - left;
+    const pageH = doc.page.height;
 
     // Faint seal watermark
-    const cx = doc.page.width / 2, cy = doc.page.height / 2 + 20;
+    const cx = doc.page.width / 2, cy = pageH / 2 + 20;
     doc.save().opacity(0.06);
     doc.lineWidth(3).strokeColor(BLUE).circle(cx, cy, 150).stroke();
     doc.fillColor(BLUE).font("Helvetica-Bold").fontSize(authority.abbr.length > 4 ? 28 : 40)
       .text(authority.abbr, cx - 150, cy - 20, { width: 300, align: "center" });
     doc.opacity(1).restore();
 
-    doc.fillColor(BLUE).fontSize(20).font("Helvetica-Bold").text(authority.name, { align: "center" });
-    doc.fillColor("#333").fontSize(12).font("Helvetica").text("Certificate of Institutional Accreditation", { align: "center" });
-    doc.moveDown(0.4);
-    doc.moveTo(left, doc.y).lineTo(right, doc.y).strokeColor(TEAL).lineWidth(1).stroke();
-    doc.moveDown(1.4);
+    // Border frame
+    const bm = 22;
+    doc.save();
+    doc.lineWidth(1.4).strokeColor(BLUE).rect(bm, bm, doc.page.width - 2 * bm, pageH - 2 * bm).stroke();
+    doc.lineWidth(0.5).strokeColor(TEAL).rect(bm + 4, bm + 4, doc.page.width - 2 * (bm + 4), pageH - 2 * (bm + 4)).stroke();
+    doc.restore();
 
-    doc.fillColor("#111").fontSize(12).font("Helvetica").text("This certifies that", { align: "center" });
-    doc.moveDown(0.5);
-    doc.fillColor(BLUE).fontSize(22).font("Helvetica-Bold").text(data.institution || "—", { align: "center" });
-    doc.moveDown(0.6);
-    doc.fillColor("#111").fontSize(12).font("Helvetica").text(
-      authority.statement,
-      left, doc.y, { width, align: "center" }
-    );
-    doc.moveDown(1);
+    // ---- Fixed zones (from the bottom up) ----
+    const QR = 92;
+    const qrY = pageH - 60 - QR - 14;          // QR block sits above the bottom border
+    const signY = qrY - 46;                    // signatory block
+    const refY = signY - 40;                   // reference + date lines
+    const listBottom = refY - 12;              // programme list must end above this
 
-    if (data.programs?.length) {
-      doc.fillColor("#111").font("Helvetica-Bold").fontSize(12).text("Accredited programmes:", left, doc.y, { width });
-      doc.font("Helvetica").fontSize(11).fillColor("#222");
-      for (const p of data.programs) doc.text(`•  ${p}`, left + 14, doc.y + 2, { width: width - 14 });
-      doc.moveDown(0.6);
+    // ---- Header (fixed) ----
+    let y = 60;
+    doc.fillColor(BLUE).fontSize(authority.name.includes("\n") ? 15 : 19).font("Helvetica-Bold")
+      .text(authority.name, left, y, { width, align: "center" });
+    y = doc.y + 2;
+    doc.fillColor("#333").fontSize(12).font("Helvetica").text("Certificate of Institutional Accreditation", left, y, { width, align: "center" });
+    y = doc.y + 6;
+    doc.moveTo(left, y).lineTo(right, y).strokeColor(TEAL).lineWidth(1).stroke();
+    y += 18;
+
+    doc.fillColor("#111").fontSize(12).font("Helvetica").text("This certifies that", left, y, { width, align: "center" });
+    y = doc.y + 6;
+    // Institution name: shrink to fit two lines at most.
+    let nameSize = 22;
+    const name = data.institution || "—";
+    doc.font("Helvetica-Bold");
+    while (nameSize > 14 && doc.fontSize(nameSize).heightOfString(name, { width }) > nameSize * 2.6) nameSize -= 1;
+    doc.fillColor(BLUE).fontSize(nameSize).text(name, left, y, { width, align: "center" });
+    y = doc.y + 8;
+    doc.fillColor("#111").fontSize(11).font("Helvetica").text(authority.statement, left, y, { width, align: "center" });
+    y = doc.y + 12;
+
+    // ---- Programme list (clipped to the remaining budget) ----
+    const programs = (data.programs || []).map((p) => String(p));
+    if (programs.length) {
+      doc.fillColor("#111").font("Helvetica-Bold").fontSize(11).text("Accredited programmes:", left, y, { width });
+      y = doc.y + 3;
+      const lineH = 13;
+      const cols = programs.length > 8 ? 2 : 1;
+      const colW = (width - 14) / cols - (cols > 1 ? 8 : 0);
+      const rowsAvail = Math.max(0, Math.floor((listBottom - y - lineH) / lineH)); // keep a row for "+N more"
+      const capacity = rowsAvail * cols;
+      const shown = programs.length > capacity ? programs.slice(0, Math.max(0, capacity)) : programs;
+      doc.font("Helvetica").fontSize(9.5).fillColor("#222");
+      shown.forEach((p, i) => {
+        const col = i % cols, rowI = Math.floor(i / cols);
+        const px = left + 14 + col * (colW + 8);
+        const py = y + rowI * lineH;
+        doc.text(`•  ${p}`, px, py, { width: colW, lineBreak: false, ellipsis: true, height: lineH });
+      });
+      y += Math.ceil(shown.length / cols) * lineH;
+      if (shown.length < programs.length) {
+        doc.font("Helvetica-Oblique").fontSize(9).fillColor("#555")
+          .text(`… and ${programs.length - shown.length} more accredited programme(s) — the full list is held on the ${authority.abbr} register.`,
+            left + 14, y, { width: width - 14, lineBreak: false, ellipsis: true, height: lineH });
+      }
     }
 
+    // ---- Reference / date (fixed) ----
     doc.font("Helvetica").fontSize(11).fillColor("#333");
-    if (data.ref) doc.text(`Accreditation reference: ${data.ref}`, { align: "center" });
-    if (data.approvedDate) doc.text(`Date of accreditation: ${data.approvedDate}`, { align: "center" });
+    if (data.ref) doc.text(`Accreditation reference: ${data.ref}`, left, refY, { width, align: "center", lineBreak: false });
+    if (data.approvedDate) doc.text(`Date of accreditation: ${data.approvedDate}`, left, refY + 15, { width, align: "center", lineBreak: false });
 
-    doc.moveDown(3);
-    doc.fillColor(BLUE).fontSize(12).font("Helvetica-Bold").text(authority.signatory, { align: "center" });
-    doc.fillColor("#555").fontSize(10).font("Helvetica-Oblique").text("Authorised signatory", { align: "center" });
+    // ---- Signatory (fixed) ----
+    doc.fillColor(BLUE).fontSize(12).font("Helvetica-Bold").text(authority.signatory, left, signY, { width, align: "center", lineBreak: false });
+    doc.fillColor("#555").fontSize(10).font("Helvetica-Oblique").text("Authorised signatory", left, signY + 15, { width, align: "center", lineBreak: false });
 
-    // Digitally signed QR (bottom, centred) — technical data lives only inside the QR.
+    // ---- Digitally signed QR (fixed, bottom centre) ----
     if (data.qrDataUrl) {
       const img = Buffer.from(data.qrDataUrl.split(",")[1], "base64");
-      const size = 100;
-      const qy = doc.page.height - 185;
-      doc.image(img, (doc.page.width - size) / 2, qy, { width: size, height: size });
+      doc.image(img, (doc.page.width - QR) / 2, qrY, { width: QR, height: QR });
       doc.fillColor("#888").fontSize(8).font("Helvetica")
-        .text(`Digitally signed by the ${authority.abbr} · scan to verify accreditation`, left, qy + size + 4, { align: "center", width });
+        .text(`Digitally signed by the ${authority.abbr} · scan to verify accreditation`, left, qrY + QR + 3, { align: "center", width, lineBreak: false });
     }
 
     doc.end();

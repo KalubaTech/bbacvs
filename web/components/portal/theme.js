@@ -33,6 +33,7 @@ export const PORTALS = {
         items: [
           { label: "National Register", icon: "registry", href: "/zaqa/register", id: "register" },
           { label: "Registration Applications", icon: "clipboardCheck", href: "/zaqa/qualifications", id: "qualifications" },
+          { label: "Accredited Programmes", icon: "award", href: "/zaqa/programmes", id: "programmes" },
           { label: "NQF Framework", icon: "scale", href: "/zaqa/nqf", id: "nqf" },
         ],
       },
@@ -46,6 +47,7 @@ export const PORTALS = {
         heading: "Credential Trust",
         items: [
           { label: "Validation Queue", icon: "queue", href: "/zaqa/validation", id: "validation" },
+          { label: "Trusted Issuers", icon: "bank", href: "/zaqa/issuers", id: "issuers" },
           { label: "Disputes & Appeals", icon: "clock", href: "/zaqa/disputes", id: "disputes" },
           { label: "Suspensions", icon: "user", href: "/zaqa/suspensions", id: "suspensions" },
           { label: "Revocations", icon: "revoke", href: "/zaqa/revocations", id: "revocations" },
@@ -140,6 +142,7 @@ export const PORTALS = {
         heading: "Qualifications",
         items: [
           { label: "Certificate Register", icon: "registry", href: "/ecz/certificates", id: "certificates" },
+          { label: "Learner Applications", icon: "apps", href: "/ecz/applications", id: "applications" },
           { label: "Registration Applications", icon: "clipboard", href: "/ecz/qualifications", id: "qualifications" },
         ],
       },
@@ -246,7 +249,7 @@ export const PORTALS = {
       {
         heading: "Credential Trust",
         items: [
-          { label: "Credential Issuance", icon: "award", href: "/issuer/classic", id: "issuance" },
+          { label: "Credential Issuance", icon: "award", href: "/institution/issuance", id: "issuance" },
           { label: "Graduate Applications", icon: "apps", href: "/institution/applications", id: "applications" },
           { label: "Evidence & ZAQA Requests", icon: "fileText", href: "/institution/evidence", id: "evidence" },
           { label: "Disputes & Corrections", icon: "edit", href: "/institution/disputes", id: "disputes" },

@@ -2,13 +2,13 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import PortalShell from "../../../../components/portal/shell";
 import Icon from "../../../../components/portal/icons";
 import CaseTimeline from "../../../../components/portal/CaseTimeline";
 import {
   Badge, Avatar, AvatarName, KV, KVGrid, SectionCard, Timeline, CheckItem,
-  ActionBtn, Modal, ErrorBanner, TONES,
+  ActionBtn, Modal, ErrorBanner, TONES, StatusTabs, DataTable, Pagination, usePager, SearchBox,
 } from "../../../../components/portal/kit";
 import { Donut, CHART } from "../../../../components/portal/charts";
 import { api } from "../../../../lib/api";
@@ -17,12 +17,25 @@ import { usePortalGuard, fmtDate, fmtDateTime } from "../../../../components/por
 const STATUS_META = {
   draft: { label: "Draft", tone: "slate" },
   pending: { label: "Pending Review", tone: "blue" },
-  validated: { label: "Validated", tone: "green" },
+  validated: { label: "Approved", tone: "green" },
   rejected: { label: "Rejected", tone: "red" },
   suspicious: { label: "Returned / Suspicious", tone: "amber" },
   suspended: { label: "Suspended", tone: "orange" },
   under_dispute: { label: "Under Dispute", tone: "purple" },
 };
+
+// Queue tabs: a credential sits in exactly one of these, keyed on its ZAQA validation state.
+// Once an officer decides, the credential leaves "Pending Review" and appears under the
+// outcome tab (e.g. Approved) — the workflow never keeps showing a decided credential.
+const QUEUE_TABS = [
+  { label: "Pending Review", states: ["pending"] },
+  { label: "Approved", states: ["validated"] },
+  { label: "Returned", states: ["suspicious"] },
+  { label: "Rejected", states: ["rejected"] },
+  { label: "Suspended", states: ["suspended"] },
+  { label: "Under Dispute", states: ["under_dispute"] },
+];
+const tabFor = (state) => QUEUE_TABS.find((t) => t.states.includes(state))?.label || "Pending Review";
 
 const RISK_META = {
   low: { label: "Low Risk", cls: "text-emerald-600", color: CHART.green, tone: "green" },
@@ -47,9 +60,13 @@ function checkIcon(rule) {
 
 function ValidationInner() {
   const { ready, user, token } = usePortalGuard(["zaqa"]);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const hashParam = searchParams.get("hash");
   const [creds, setCreds] = useState([]);
+  const [queueTab, setQueueTab] = useState("Pending Review");
+  const [queueQuery, setQueueQuery] = useState("");
+  const [flash, setFlash] = useState(null); // "Moved to Approved" style confirmation
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(null);
   const [note, setNote] = useState("");
@@ -62,8 +79,10 @@ function ValidationInner() {
     try {
       const res = await api.zaqaValidationList(token);
       setCreds(res.credentials || []);
+      return res.credentials || [];
     } catch (err) {
       setError(err.message);
+      return null;
     }
   }, [token]);
 
@@ -71,11 +90,34 @@ function ValidationInner() {
     if (ready) load();
   }, [ready, load]);
 
+  // Selection: an explicit ?hash= wins; otherwise the next credential still awaiting review.
+  // Decided credentials are never auto-selected — they live under their outcome tab.
   const cred =
     creds.find((c) => c.credentialHash === hashParam) ||
     creds.find((c) => c.zaqaValidation === "pending") ||
-    creds[0] ||
     null;
+  // Keep the queue tab in step with a credential opened via deep link.
+  useEffect(() => {
+    if (hashParam) {
+      const c = creds.find((x) => x.credentialHash === hashParam);
+      if (c) setQueueTab(tabFor(c.zaqaValidation));
+    }
+  }, [hashParam, creds]);
+
+  const select = (hash) => {
+    setFlash(null);
+    router.replace(hash ? `/zaqa/validation?hash=${hash}` : "/zaqa/validation");
+  };
+
+  // After a decision the credential moves to its outcome tab and the review advances to the
+  // next pending credential (or shows "queue clear").
+  const afterDecision = (fresh, fallbackState) => {
+    const upd = fresh && cred ? fresh.find((c) => c.credentialHash === cred.credentialHash) : null;
+    const dest = tabFor(upd?.zaqaValidation || fallbackState);
+    setQueueTab(dest);
+    setFlash(`${cred?.subjectName || "Credential"} — ${cred?.qualification || ""} moved to ${dest}.`);
+    router.replace("/zaqa/validation");
+  };
 
   // NQF descriptor analysis for the claimed level (spec finding 24).
   const claimedLevel = cred?.zqfLevel ?? null;
@@ -99,7 +141,7 @@ function ValidationInner() {
     try {
       await api.zaqaSetValidation(token, cred.credentialHash, { zaqaValidation, note });
       setNote("");
-      await load();
+      afterDecision(await load(), zaqaValidation);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -115,7 +157,7 @@ function ValidationInner() {
       await api.zaqaSuspend(token, cred.credentialHash, suspendReason.trim());
       setSuspendOpen(false);
       setSuspendReason("");
-      await load();
+      afterDecision(await load(), "suspended");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -131,7 +173,7 @@ function ValidationInner() {
       await api.zaqaReinstate(token, cred.credentialHash, note);
       setNote("");
       setReinstateOpen(false);
-      await load();
+      afterDecision(await load(), cred.zaqaRef ? "validated" : "pending");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -146,15 +188,13 @@ function ValidationInner() {
     setError(null);
     try {
       await api.zaqaRevoke(token, cred.credentialHash);
-      await load();
+      afterDecision(await load(), "rejected");
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(null);
     }
   }
-
-  if (!ready) return null;
 
   const report = cred?.validationReport || null;
   const checks = report?.checks || [];
@@ -187,6 +227,35 @@ function ValidationInner() {
         },
       ]
     : [];
+
+  const queueTabs = QUEUE_TABS.map((t) => ({
+    label: t.label,
+    count: creds.filter((c) => t.states.includes(c.zaqaValidation)).length,
+  }));
+  const activeStates = QUEUE_TABS.find((t) => t.label === queueTab)?.states || ["pending"];
+  const queueRows = creds.filter((c) => {
+    if (!activeStates.includes(c.zaqaValidation)) return false;
+    if (!queueQuery) return true;
+    return `${c.subjectName || ""} ${c.qualification || ""} ${c.institution || ""}`.toLowerCase().includes(queueQuery.toLowerCase());
+  });
+  const queuePg = usePager(queueRows, 6, [queueTab, queueQuery]);
+  const queueColumns = [
+    { key: "subjectName", label: "Holder", render: (r) => <span className="font-semibold text-slate-800">{r.subjectName || "—"}</span> },
+    { key: "qualification", label: "Qualification", render: (r) => r.qualification || "—" },
+    { key: "institution", label: "Institution", render: (r) => r.institution || "—" },
+    { key: "zqfLevel", label: "ZQF", render: (r) => (r.zqfLevel != null ? `Level ${r.zqfLevel}` : "—") },
+    { key: "issuedAt", label: "Submitted", tdClass: "whitespace-nowrap", render: (r) => fmtDate(r.issuedAt) },
+    {
+      key: "state", label: "Status",
+      render: (r) => {
+        const m = STATUS_META[r.zaqaValidation] || { label: r.zaqaValidation, tone: "slate" };
+        return <Badge tone={m.tone} dot>{m.label}</Badge>;
+      },
+    },
+    { key: "zaqaRef", label: "ZAQA Ref", render: (r) => r.zaqaRef || "—" },
+  ];
+
+  if (!ready) return null;
 
   const panel = (
     <div>
@@ -310,9 +379,43 @@ function ValidationInner() {
       panelWidth="w-[380px]"
     >
       <ErrorBanner error={error} onRetry={load} />
+      {flash && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[13px] text-emerald-800">
+          <span className="flex items-center gap-2"><Icon name="checkCircle" className="h-4 w-4" />{flash}</span>
+          <button type="button" onClick={() => setFlash(null)} className="text-[12px] font-semibold underline">Dismiss</button>
+        </div>
+      )}
+
+      {/* Validation queue — one tab per state; decided credentials move out of Pending Review. */}
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 pt-1 shadow-card">
+        <StatusTabs tabs={queueTabs} active={queueTab} onChange={setQueueTab} />
+        <div className="mb-3 flex flex-wrap items-center gap-2.5">
+          <SearchBox className="w-full sm:w-80" placeholder="Search holder, qualification or institution" value={queueQuery} onChange={setQueueQuery} />
+          <span className="ml-auto text-[12px] text-slate-400">{queueRows.length} in {queueTab}</span>
+        </div>
+        <DataTable
+          dense
+          rowKey="credentialHash"
+          activeKey={cred?.credentialHash}
+          onRowClick={(r) => select(r.credentialHash)}
+          columns={queueColumns}
+          rows={queuePg.rows}
+          emptyText={queueTab === "Pending Review" ? "Queue clear — no credentials awaiting review." : `No credentials under ${queueTab}.`}
+          footer={<Pagination {...queuePg.props} className="border-t border-slate-100" />}
+        />
+      </div>
+
       {!cred ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-[13px] text-slate-400 shadow-card">
-          No credentials submitted for validation yet.
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-card">
+          <Icon name="checkCircle" className="mx-auto h-8 w-8 text-emerald-500" />
+          <div className="mt-2 text-[14px] font-bold text-slate-800">
+            {creds.length ? "Validation queue clear" : "No credentials submitted for validation yet"}
+          </div>
+          <p className="mt-1 text-[12.5px] text-slate-400">
+            {creds.length
+              ? "Every submitted credential has a decision. Pick one from the tabs above to review its record."
+              : "Institutions submit credentials to ZAQA from their portal; they appear here for review."}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
