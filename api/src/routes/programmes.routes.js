@@ -30,6 +30,12 @@ function view(p) {
     institution: p.institution, note: p.note, createdAt: p.createdAt,
     qualificationRef: p.qualificationRef,
     sector, regulator: sector ? regulatorFor(sector) : undefined,
+    credentialType: p.credentialType, inceptionYear: p.inceptionYear,
+    cycles: (p.cycles || []).map((c) => ({
+      id: c._id, label: c.label, startYear: c.startYear, endYear: c.endYear ?? null, intake: c.intake,
+      status: c.status || "offered", note: c.note,
+      courses: (c.courses || []).map((k) => ({ code: k.code, title: k.title, year: k.year, semester: k.semester, credits: k.credits })),
+    })),
     decidedAt: ["approved", "rejected"].includes(p.status)
       ? [...(p.events || [])].reverse().find((e) => /accredited|rejected/.test(e.action || ""))?.at
       : undefined,
@@ -100,6 +106,57 @@ router.post("/:id/submit", requireAuth, requireRole(ROLES.ISSUER), async (req, r
     pushEvent(p, req, "programme.submitted", undefined, { from: "draft", to: "pending" });
     await p.save();
     await logActivity(req, { action: "programme.submit", entity: "programme", entityId: String(p._id), summary: `Submitted programme ${p.name} for accreditation` });
+    res.json({ programme: view(p) });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/programmes/:id/catalogue (institution) — replace the programme's cycle register:
+// inception year, award type, and every cycle it has run with the courses offered. Editable in
+// any lifecycle state; the regulator's accreditation decision is untouched.
+const courseSchema = Joi.object({
+  code: Joi.string().max(40).allow("").optional(),
+  title: Joi.string().min(1).max(200).required(),
+  year: Joi.number().integer().min(1).max(10).optional().allow(null),
+  semester: Joi.string().max(40).allow("").optional(),
+  credits: Joi.number().min(0).max(1000).optional().allow(null),
+});
+const cycleSchema = Joi.object({
+  label: Joi.string().max(80).allow("").optional(),
+  startYear: Joi.number().integer().min(1900).max(2100).required(),
+  endYear: Joi.number().integer().min(1900).max(2100).optional().allow(null),
+  intake: Joi.string().max(80).allow("").optional(),
+  status: Joi.string().valid("offered", "discontinued").default("offered"),
+  note: Joi.string().max(300).allow("").optional(),
+  courses: Joi.array().items(courseSchema).max(200).default([]),
+});
+const catalogueSchema = Joi.object({
+  credentialType: Joi.string().valid("secondary", "diploma", "degree", "masters", "phd", "other").optional().allow(null, ""),
+  inceptionYear: Joi.number().integer().min(1900).max(2100).optional().allow(null),
+  cycles: Joi.array().items(cycleSchema).max(100).required(),
+});
+router.put("/:id/catalogue", requireAuth, requireRole(ROLES.ISSUER, ROLES.ECZ), validate(catalogueSchema), async (req, res, next) => {
+  try {
+    const p = await Programme.findOne({ _id: req.params.id, issuer: req.user.issuerId });
+    if (!p) return res.status(404).json({ error: "Programme not found" });
+    for (const c of req.body.cycles) {
+      if (c.endYear != null && c.endYear < c.startYear) {
+        return res.status(400).json({ error: `Cycle ${c.label || c.startYear}: end year is before start year.` });
+      }
+    }
+    const before = (p.cycles || []).length;
+    p.credentialType = req.body.credentialType || undefined;
+    p.inceptionYear = req.body.inceptionYear ?? undefined;
+    p.cycles = req.body.cycles.map((c) => ({
+      ...c, label: c.label || `${c.startYear}${c.endYear != null && c.endYear !== c.startYear ? `–${c.endYear}` : ""}`,
+      endYear: c.endYear ?? undefined,
+    }));
+    pushEvent(p, req, "programme.catalogue_updated", undefined, {
+      cyclesBefore: before, cyclesAfter: p.cycles.length,
+      courses: p.cycles.reduce((n, c) => n + (c.courses || []).length, 0),
+      inceptionYear: p.inceptionYear, credentialType: p.credentialType,
+    });
+    await p.save();
+    await logActivity(req, { action: "programme.catalogue", entity: "programme", entityId: String(p._id), summary: `Updated cycle register for ${p.name} (${p.cycles.length} cycle${p.cycles.length === 1 ? "" : "s"})` });
     res.json({ programme: view(p) });
   } catch (err) { next(err); }
 });

@@ -11,6 +11,7 @@ import { decryptKey } from "../services/keystore.service.js";
 import { revokeCredentialAs } from "../services/web3.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { pushEvent } from "../services/history.service.js";
+import { setRegulatorScopes } from "../services/scope.service.js";
 import { runValidationChecks, hasCriticalFailure } from "../services/validationEngine.service.js";
 import { notifyEmail, notifyIssuerOfficers } from "../services/notify.service.js";
 
@@ -67,6 +68,7 @@ router.get("/registry", ...zaqaOnly, async (_req, res, next) => {
         sector: i.sector, heaStatus: i.heaStatus || "approved", onChain: i.onChain,
         zaqaTrusted: !!i.zaqaTrusted, zaqaNote: i.zaqaNote, createdAt: i.createdAt,
         accreditedPrograms: i.accreditedPrograms || [],
+        accreditationScopes: i.accreditationScopes || [],
         events: i.events || [],
       })),
     });
@@ -94,6 +96,31 @@ router.patch("/registry/:id", ...zaqaOnly, validate(trustSchema), async (req, re
       summary: `Set ${issuer.institution} to ${req.body.zaqaTrusted ? "trusted" : "not trusted"} in the national registry`,
     });
     res.json({ id: issuer._id, zaqaTrusted: issuer.zaqaTrusted, zaqaNote: issuer.zaqaNote });
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/zaqa/registry/:id/scopes — ZAQA's national restrictions on what an issuer may
+// award and when (in addition to the sector regulator's own scope entries).
+const zaqaScopeEntry = Joi.object({
+  allowedTypes: Joi.array().items(Joi.string().valid("secondary", "diploma", "degree", "masters", "phd", "other")).default([]),
+  maxZqfLevel: Joi.number().integer().min(1).max(10).optional().allow(null),
+  validFrom: Joi.date().required(),
+  validTo: Joi.date().optional().allow(null),
+  note: Joi.string().max(300).allow("").optional(),
+});
+router.patch("/registry/:id/scopes", ...zaqaOnly, validate(Joi.object({ scopes: Joi.array().items(zaqaScopeEntry).max(50).required() })), async (req, res, next) => {
+  try {
+    const issuer = await Issuer.findById(req.params.id);
+    if (!issuer) return res.status(404).json({ error: "Issuer not found" });
+    for (const s of req.body.scopes) {
+      if (s.validTo && new Date(s.validTo) < new Date(s.validFrom)) return res.status(400).json({ error: "A scope's end date is before its start date." });
+    }
+    await setRegulatorScopes(issuer, "ZAQA", req.body.scopes, req);
+    await logActivity(req, {
+      action: "zaqa.scope_update", entity: "institution", entityId: String(issuer._id),
+      summary: `Updated ZAQA award restrictions for ${issuer.institution} (${req.body.scopes.length} entr${req.body.scopes.length === 1 ? "y" : "ies"})`,
+    });
+    res.json({ id: issuer._id, accreditationScopes: issuer.accreditationScopes });
   } catch (err) { next(err); }
 });
 

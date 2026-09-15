@@ -18,6 +18,7 @@ import { pin, fetchByCid } from "../services/ipfs.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { pushEvent, makeEvent } from "../services/history.service.js";
 import { runValidationChecks } from "../services/validationEngine.service.js";
+import { eligibilityGate } from "../services/scope.service.js";
 import { notifyEmail, notifyIssuerOfficers, notifyRole } from "../services/notify.service.js";
 import { CredentialIndex } from "../models/index.js";
 
@@ -172,6 +173,8 @@ router.post("/:id/verify-issue", requireAuth, requireRole(...ISSUING_ROLES), asy
     }
     const claims = { name: app.applicantName, nationalId: app.applicantNationalId, qualification: app.qualification, graduationYear: app.graduationYear };
     const meta = { zqfLevel: app.zqfLevel, credentialType: issuer.sector === "secondary" ? "secondary" : (app.credentialType || "other") };
+    const eligibility = await eligibilityGate(issuer, { qualification: app.qualification, credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: app.graduationYear });
+    if (eligibility) return res.status(eligibility.status).json({ error: eligibility.error, code: eligibility.code });
     // Duplicate-issuance guard: never anchor the same qualification twice for this candidate
     // (matched by email or NRC), and reject a concurrent double-click while the first request
     // is still pinning / anchoring.

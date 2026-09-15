@@ -14,6 +14,7 @@ import { buildCertificatePDF, buildTranscriptPDF } from "../services/pdf.service
 import { logActivity } from "../services/activity.service.js";
 import { pushEvent } from "../services/history.service.js";
 import { runValidationChecks } from "../services/validationEngine.service.js";
+import { eligibilityGate } from "../services/scope.service.js";
 import { notifyRole, notifyEmail } from "../services/notify.service.js";
 import { buildAccreditationCertificate } from "../services/accreditationCert.service.js";
 import { config } from "../config/index.js";
@@ -110,6 +111,11 @@ router.post("/issue", requireAuth, requireRole(...ISSUING_ROLES), validate(issue
     const { holderEmail, claims, zqfLevel, credentialType } = req.body;
     const allowed = await programmeGate(issuer._id, claims.qualification);
     if (allowed) return res.status(409).json({ error: "programme_not_accredited", allowed });
+    const eligibility = await eligibilityGate(issuer, {
+      qualification: claims.qualification, credentialType: resolveCredentialType(issuer, credentialType),
+      zqfLevel, graduationYear: claims.graduationYear,
+    });
+    if (eligibility) return res.status(eligibility.status).json({ error: eligibility.error, code: eligibility.code });
     const lock = await guardDuplicateIssuance(res, {
       issuerId: issuer._id, holderEmail, nationalId: claims.nationalId,
       qualification: claims.qualification, graduationYear: claims.graduationYear,
@@ -142,6 +148,11 @@ router.post("/prepare", requireAuth, requireRole(...ISSUING_ROLES), validate(iss
     const { holderEmail, claims, zqfLevel, credentialType } = req.body;
     const allowed = await programmeGate(issuer._id, claims.qualification);
     if (allowed) return res.status(409).json({ error: "programme_not_accredited", allowed });
+    const eligibility = await eligibilityGate(issuer, {
+      qualification: claims.qualification, credentialType: resolveCredentialType(issuer, credentialType),
+      zqfLevel, graduationYear: claims.graduationYear,
+    });
+    if (eligibility) return res.status(eligibility.status).json({ error: eligibility.error, code: eligibility.code });
     // A PENDING record from an earlier /prepare counts as a duplicate too — the institution
     // must anchor (or abandon) that one rather than prepare the same credential twice.
     const lock = await guardDuplicateIssuance(res, {
@@ -422,6 +433,8 @@ router.post("/:hash/supersede", requireAuth, requireRole(...ISSUING_ROLES), vali
       zqfLevel: req.body.zqfLevel ?? cred.zqfLevel,
       credentialType: resolveCredentialType(issuer, req.body.credentialType ?? cred.credentialType),
     };
+    const eligibility = await eligibilityGate(issuer, { qualification: claims.qualification, credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: claims.graduationYear });
+    if (eligibility) return res.status(eligibility.status).json({ error: eligibility.error, code: eligibility.code });
     // The corrected record must not collide with ANOTHER live credential (the one being
     // superseded is excluded — it is revoked below), and a double-clicked "Reissue" must not
     // anchor two replacements.

@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import PortalShell from "../../../../components/portal/shell";
 import CaseTimeline from "../../../../components/portal/CaseTimeline";
+import { ScopeList, ScopeModal } from "../../../../components/portal/ScopeEditor";
 import {
   Badge, StatCard, StatRow, SectionCard, StatusTabs, SearchBox, SelectPill, ToolButton, Toggle,
   DataTable, Pagination, usePager, KVGrid, PanelHeader, ActionBtn, ErrorBanner, exportCSV,
@@ -37,6 +38,8 @@ export default function ZaqaIssuersPage() {
   const [q, setQ] = useState("");
   const [sector, setSector] = useState("");
   const [sel, setSel] = useState(null);
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [scopeError, setScopeError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,6 +52,13 @@ export default function ZaqaIssuersPage() {
 
   useEffect(() => { if (ready) load(); }, [ready, load]);
 
+  async function saveScopes(scopes) {
+    if (!selected) return;
+    setBusy(selected.id); setScopeError(null);
+    try { await api.zaqaSetScopes(token, selected.id, scopes); setScopeOpen(false); await load(); }
+    catch (err) { setScopeError(err.message); }
+    finally { setBusy(null); }
+  }
   async function setTrust(i, zaqaTrusted) {
     setBusy(i.id);
     setError(null);
@@ -116,6 +126,17 @@ export default function ZaqaIssuersPage() {
           </ul>
         )}
       </SectionCard>
+      <SectionCard
+        title="Award Restrictions"
+        action={<button type="button" onClick={() => { setScopeOpen(true); setScopeError(null); }} className="text-[11px] font-semibold text-blue-600 hover:underline">Edit ZAQA restrictions</button>}
+        className="mb-4"
+        pad="p-4"
+      >
+        <ScopeList scopes={selected.accreditationScopes} />
+        <p className="mt-2 text-[11px] text-slate-400">
+          {sectorOf(selected).regulator} sets the sector scope; ZAQA may add national restrictions. Every authority&apos;s scope in force in the award year must permit the award.
+        </p>
+      </SectionCard>
       <SectionCard title="History" className="mb-4" pad="p-4">
         <CaseTimeline events={selected.events} />
       </SectionCard>
@@ -149,6 +170,7 @@ export default function ZaqaIssuersPage() {
         <StatCard icon="book" iconTone="softgreen" label="Secondary (ECZ)" value={loading ? "…" : String(rows.filter((i) => i.sector === "secondary").length)} />
       </StatRow>
 
+      <ScopeModal open={scopeOpen && !!selected} institution={selected} regulator="ZAQA" scopes={selected?.accreditationScopes || []} busy={busy === selected?.id} error={scopeError} onClose={() => { setScopeOpen(false); setScopeError(null); }} onSave={saveScopes} />
       <div className="rounded-xl border border-slate-200 bg-white px-4 pt-1 shadow-card">
         <StatusTabs tabs={TABS.map((t) => ({ label: t.label, count: rows.filter(t.match).length }))} active={tab} onChange={setTab} />
         <div className="mb-4 flex flex-wrap items-center gap-2.5">

@@ -80,6 +80,23 @@ const issuerSchema = new mongoose.Schema(
     zaqaTrusted: { type: Boolean, default: false },
     zaqaNote: { type: String },
 
+    // --- accreditation scope: WHAT the institution may award and WHEN ----------------
+    // Set by its regulator (HEA / TEVETA / ECZ) and/or ZAQA. Each entry is a period during
+    // which the listed credential types (empty = any) up to maxZqfLevel may be awarded. A
+    // credential is checked against the scope in force in its award year (scope.service.js).
+    accreditationScopes: [
+      {
+        regulator: { type: String, enum: ["HEA", "TEVETA", "ECZ", "ZAQA"], required: true },
+        allowedTypes: { type: [String], default: [] },
+        maxZqfLevel: { type: Number, min: 1, max: 10 },
+        validFrom: { type: Date, required: true },
+        validTo: { type: Date },
+        note: { type: String },
+        setBy: { type: String },
+        setAt: { type: Date, default: Date.now },
+      },
+    ],
+
     // --- public institution profile (self-maintained by the institution) -----
     contactEmail: { type: String, lowercase: true },
     contactPhone: { type: String },
@@ -197,6 +214,31 @@ const programmeSchema = new mongoose.Schema(
     // draft → institution created it; pending → submitted to HEA; approved/rejected → HEA decision.
     status: { type: String, enum: ["draft", "pending", "approved", "rejected"], default: "draft" },
     note: { type: String },
+    // Kind of award the programme leads to, and the year it first ran.
+    credentialType: { type: String, enum: ["secondary", "diploma", "degree", "masters", "phd", "other"] },
+    inceptionYear: { type: Number, min: 1900, max: 2100 },
+    // Cycle register: every intake / academic cycle the programme has run since inception,
+    // with the courses offered in that cycle. Lets validation confirm a programme was actually
+    // running in a credential's award year.
+    cycles: [
+      {
+        label: { type: String },          // e.g. "2019/2020" or "2021 January intake"
+        startYear: { type: Number, required: true },
+        endYear: { type: Number },        // null = ongoing
+        intake: { type: String },         // e.g. "January", "Full-time"
+        status: { type: String, enum: ["offered", "discontinued"], default: "offered" },
+        note: { type: String },
+        courses: [
+          {
+            code: { type: String },
+            title: { type: String, required: true },
+            year: { type: Number },       // year of study
+            semester: { type: String },
+            credits: { type: Number },
+          },
+        ],
+      },
+    ],
     // accreditation decision history — appended, never rewritten
     events: [eventEntry],
   },

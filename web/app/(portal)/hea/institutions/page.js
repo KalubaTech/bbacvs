@@ -8,6 +8,7 @@ import {
   Timeline, KV, ActionBtn, PanelHeader, Modal, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
 import CaseTimeline from "../../../../components/portal/CaseTimeline";
+import { ScopeList, ScopeModal } from "../../../../components/portal/ScopeEditor";
 import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 import { api, openBlob } from "../../../../lib/api";
 
@@ -17,7 +18,7 @@ const SECTOR_LABEL = { higher_ed: "Higher Education", university: "University", 
 
 const short = (v) => (v && v.length > 22 ? `${v.slice(0, 12)}…${v.slice(-6)}` : v || "—");
 
-function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onViewDoc, onSaveNote, onCertificate, onEditProgrammes }) {
+function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onViewDoc, onSaveNote, onCertificate, onEditProgrammes, onEditScope }) {
   const status = inst.heaStatus || "approved";
   const [note, setNote] = useState(inst.heaNote || "");
   const timeline = [
@@ -87,6 +88,20 @@ function DetailPanel({ inst, busy, onClose, onApprove, onReject, onReturn, onVie
             ))}
           </ul>
         )}
+      </SectionCard>
+
+      <SectionCard
+        title="Scope of Accreditation"
+        action={
+          <button type="button" onClick={() => onEditScope(inst)} className="text-[11px] font-semibold text-blue-600 hover:underline">
+            Edit HEA scope
+          </button>
+        }
+        className="mb-4"
+        pad="p-3.5"
+      >
+        <ScopeList scopes={inst.accreditationScopes} />
+        <p className="mt-2 text-[11px] text-slate-400">Awards outside the scope in force in their award year are blocked at issuance and flagged as critical in ZAQA validation.</p>
       </SectionCard>
 
       <SectionCard title="History" className="mb-4" pad="p-4">
@@ -251,6 +266,8 @@ export default function HeaInstitutionsPage() {
   const [sel, setSel] = useState(undefined);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [progFor, setProgFor] = useState(null);
+  const [scopeFor, setScopeFor] = useState(null);
+  const [scopeError, setScopeError] = useState(null);
   const [institutions, setInstitutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -307,6 +324,13 @@ export default function HeaInstitutionsPage() {
     setBusy(`cert:${id}`); setError(null);
     try { openBlob(await api.heaAccreditationCertificate(token, id), "HEA-accreditation-certificate.pdf"); }
     catch (err) { setError(err.message); }
+    finally { setBusy(null); }
+  }
+  async function saveScopes(scopes) {
+    if (!scopeFor) return;
+    setBusy(scopeFor.id); setScopeError(null);
+    try { await api.heaSetScopes(token, scopeFor.id, scopes); setScopeFor(null); await load(); }
+    catch (err) { setScopeError(err.message); }
     finally { setBusy(null); }
   }
   async function saveProgrammes(inst, list) {
@@ -393,6 +417,7 @@ export default function HeaInstitutionsPage() {
             onSaveNote={saveNote}
             onCertificate={certificate}
             onEditProgrammes={setProgFor}
+          onEditScope={(i) => { setScopeFor(i); setScopeError(null); }}
           />
         ) : (
           <div className="py-10 text-center text-[13px] text-slate-400">No institution selected.</div>
@@ -445,6 +470,7 @@ export default function HeaInstitutionsPage() {
 
       <RegisterModal open={registerOpen} onClose={() => setRegisterOpen(false)} onCreated={load} token={token} />
       <ProgrammesModal inst={progFor} busy={busy === progFor?.id} onClose={() => setProgFor(null)} onSave={saveProgrammes} />
+      <ScopeModal open={!!scopeFor} institution={scopeFor} regulator="HEA" scopes={scopeFor?.accreditationScopes || []} busy={busy === scopeFor?.id} error={scopeError} onClose={() => { setScopeFor(null); setScopeError(null); }} onSave={saveScopes} />
     </PortalShell>
   );
 }

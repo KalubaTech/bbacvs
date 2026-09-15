@@ -7,6 +7,7 @@ import {
   Modal, ErrorBanner, ActionBtn, KVGrid, PanelHeader,
 } from "../../../../components/portal/kit";
 import CaseTimeline from "../../../../components/portal/CaseTimeline";
+import { CatalogueView, CatalogueModal } from "../../../../components/portal/ProgrammeCatalogue";
 import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 import { api } from "../../../../lib/api";
 
@@ -23,7 +24,7 @@ function StatusBadge({ status }) {
   return <Badge tone={m.tone} dot>{m.label}</Badge>;
 }
 
-function DetailPanel({ p, busy, error, onClose, onSubmit }) {
+function DetailPanel({ p, busy, error, onClose, onSubmit, onEditCatalogue }) {
   if (!p) {
     return (
       <div>
@@ -62,6 +63,14 @@ function DetailPanel({ p, busy, error, onClose, onSubmit }) {
         </ActionBtn>
       )}
 
+      <div className="mb-4 rounded-xl border border-slate-200 p-3.5">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-[12.5px] font-bold text-slate-800">Cycle Register</div>
+          <button type="button" onClick={() => onEditCatalogue(p)} className="text-[11px] font-semibold text-blue-600 hover:underline">Edit cycles &amp; courses</button>
+        </div>
+        <CatalogueView programme={p} />
+      </div>
+
       <div className="rounded-xl border border-slate-200 p-3.5">
         <div className="mb-2.5 text-[12.5px] font-bold text-slate-800">Case History</div>
         <CaseTimeline events={p.events} />
@@ -89,6 +98,8 @@ export default function InstitutionProgrammesPage() {
   const [qualMatches, setQualMatches] = useState([]);
   const [qualSearching, setQualSearching] = useState(false);
   const [pickedQual, setPickedQual] = useState(null);
+  const [catFor, setCatFor] = useState(null);
+  const [catError, setCatError] = useState(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -147,6 +158,13 @@ export default function InstitutionProgrammesPage() {
     finally { setBusy(false); }
   }
 
+  async function saveCatalogue(body) {
+    if (!catFor) return;
+    setBusy(true); setCatError(null);
+    try { await api.saveProgrammeCatalogue(token, catFor.id, body); setCatFor(null); await load(); }
+    catch (err) { setCatError(err.message); }
+    finally { setBusy(false); }
+  }
   async function submitForAccreditation(p) {
     setBusy(true);
     setPanelError(null);
@@ -198,6 +216,7 @@ export default function InstitutionProgrammesPage() {
           error={panelError}
           onClose={() => { setSel(null); setPanelError(null); }}
           onSubmit={submitForAccreditation}
+          onEditCatalogue={(p) => { setCatFor(p); setCatError(null); }}
         />
       }
       panelKey={selected?.id}
@@ -221,6 +240,7 @@ export default function InstitutionProgrammesPage() {
             { key: "zqfLevel", label: "ZQF Level", render: (r) => (r.zqfLevel ? `Level ${r.zqfLevel}` : "—") },
             { key: "qualificationRef", label: "Registered Qualification", render: (r) => r.qualificationRef || "—" },
             { key: "status", label: "Status", render: (r) => <StatusBadge status={r.status} /> },
+            { key: "cycles", label: "Cycles", render: (r) => `${(r.cycles || []).length}${r.inceptionYear ? ` · since ${r.inceptionYear}` : ""}` },
             { key: "note", label: "Regulator Note", tdClass: "text-slate-500", render: (r) => r.note || "—" },
             { key: "createdAt", label: "Created", tdClass: "whitespace-nowrap", render: (r) => fmtDate(r.createdAt) },
           ]}
@@ -228,6 +248,8 @@ export default function InstitutionProgrammesPage() {
           footer={<Pagination {...pg.props} className="border-t border-slate-100" />}
         />
       </div>
+
+      <CatalogueModal open={!!catFor} programme={catFor} busy={busy} error={catError} onClose={() => { setCatFor(null); setCatError(null); }} onSave={saveCatalogue} />
 
       {/* New programme */}
       <Modal

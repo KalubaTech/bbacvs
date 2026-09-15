@@ -8,6 +8,7 @@ import {
   PanelHeader, ErrorBanner, exportCSV,
 } from "../../../../components/portal/kit";
 import CaseTimeline from "../../../../components/portal/CaseTimeline";
+import { CatalogueView } from "../../../../components/portal/ProgrammeCatalogue";
 import { usePortalGuard, fmtDate } from "../../../../components/portal/auth";
 import { api } from "../../../../lib/api";
 
@@ -47,6 +48,10 @@ function DetailPanel({ prog, busy, onClose, onApprove, onReject }) {
             { label: "Regulator Note", value: prog.note || "—" },
           ]}
         />
+      </SectionCard>
+
+      <SectionCard title="Cycle Register" className="mb-4" pad="p-4">
+        <CatalogueView programme={prog} compact />
       </SectionCard>
 
       <SectionCard title="History" className="mb-4" pad="p-4">

@@ -12,6 +12,7 @@ import { buildAccreditationCertificate } from "../services/accreditationCert.ser
 import { notifyIssuerOfficers } from "../services/notify.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { pushEvent } from "../services/history.service.js";
+import { setRegulatorScopes } from "../services/scope.service.js";
 
 const router = Router();
 const heaOnly = [requireAuth, requireRole(ROLES.HEA, ROLES.ADMIN)];
@@ -26,6 +27,7 @@ function issuerView(i) {
     heaStatus: i.heaStatus || "approved", // legacy issuers read as approved
     heaNote: i.heaNote,
     accreditedPrograms: i.accreditedPrograms || [],
+    accreditationScopes: i.accreditationScopes || [],
     zaqaTrusted: !!i.zaqaTrusted,
     onChain: i.onChain,
     registrationTx: i.registrationTx,
@@ -120,6 +122,36 @@ router.patch("/institutions/:id/programs", ...heaOnly, validate(programsSchema),
     await logActivity(req, {
       action: "hea.programs_update", entity: "institution", entityId: String(issuer._id),
       summary: `Updated accredited programs for ${issuer.institution} (added ${added.length}, removed ${removed.length})`,
+    });
+    res.json({ institution: issuerView(issuer) });
+  } catch (err) { next(err); }
+});
+
+
+// PATCH /api/hea/institutions/:id/scopes — set HEA's accreditation scope entries:
+// what the institution may award (types, max ZQF level) and during which period.
+const scopeEntrySchema = Joi.object({
+  allowedTypes: Joi.array().items(Joi.string().valid("secondary", "diploma", "degree", "masters", "phd", "other")).default([]),
+  maxZqfLevel: Joi.number().integer().min(1).max(10).optional().allow(null),
+  validFrom: Joi.date().required(),
+  validTo: Joi.date().optional().allow(null),
+  note: Joi.string().max(300).allow("").optional(),
+});
+const scopesSchema = Joi.object({ scopes: Joi.array().items(scopeEntrySchema).max(50).required() });
+router.patch("/institutions/:id/scopes", ...heaOnly, validate(scopesSchema), async (req, res, next) => {
+  try {
+    const issuer = await Issuer.findById(req.params.id);
+    if (!issuer) return res.status(404).json({ error: "Institution not found" });
+    if (issuer.sector === "tevet" || issuer.sector === "secondary") return res.status(403).json({ error: "This institution is not regulated by the HEA." });
+    for (const s of req.body.scopes) {
+      if (s.validTo && new Date(s.validTo) < new Date(s.validFrom)) {
+        return res.status(400).json({ error: "A scope's end date is before its start date." });
+      }
+    }
+    await setRegulatorScopes(issuer, "HEA", req.body.scopes, req);
+    await logActivity(req, {
+      action: "hea.scope_update", entity: "institution", entityId: String(issuer._id),
+      summary: `Updated HEA accreditation scope for ${issuer.institution} (${req.body.scopes.length} entr${req.body.scopes.length === 1 ? "y" : "ies"})`,
     });
     res.json({ institution: issuerView(issuer) });
   } catch (err) { next(err); }

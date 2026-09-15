@@ -7,6 +7,7 @@ import { buildVerificationCertificatePDF } from "../services/pdf.service.js";
 import { CredentialIndex, Issuer, Programme, VerificationLog } from "../models/index.js";
 import { config } from "../config/index.js";
 import { maskNationalId } from "../utils/nationalId.js";
+import { checkScope, findProgramme, checkProgrammeCycle } from "../services/scope.service.js";
 
 const router = Router();
 
@@ -115,6 +116,16 @@ router.get("/:id", async (req, res, next) => {
       }
     }
 
+    // Was the institution accredited for this kind of award when it was made, and was the
+    // programme actually running then? null when nothing is recorded to judge against.
+    let scopeAtAward = null, programmeOfferedInYear = null, eligibilityDetail = null;
+    if (meta && issuerRec) {
+      const scope = checkScope(issuerRec, { credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: meta.graduationYear });
+      if (scope.applicable) { scopeAtAward = scope.ok; if (!scope.ok) eligibilityDetail = scope.detail; }
+      const cycle = checkProgrammeCycle(await findProgramme(meta.issuer, meta.qualification), meta.graduationYear);
+      if (cycle.applicable) { programmeOfferedInYear = cycle.ok; if (!cycle.ok && !eligibilityDetail) eligibilityDetail = cycle.detail; }
+    }
+
     // Plain-language summary for non-technical verifiers (no hashes, no tx ids, no jargon).
     const blockchainIntegrity = INTEGRITY_KEY[onchain.status] || "not_found";
     const summary = {
@@ -138,6 +149,9 @@ router.get("/:id", async (req, res, next) => {
           }
         : null,
       programmeAccredited,
+      scopeAtAward,
+      programmeOfferedInYear,
+      eligibilityDetail,
       issuerAuthority: !!issuerRec?.onChain,
       zaqa: {
         validation: meta?.zaqaValidation || null,

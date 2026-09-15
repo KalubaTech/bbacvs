@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import PortalShell from "../../../../components/portal/shell";
 import CaseTimeline from "../../../../components/portal/CaseTimeline";
+import { CatalogueView } from "../../../../components/portal/ProgrammeCatalogue";
 import {
   Badge, StatCard, StatRow, SectionCard, StatusTabs, SearchBox, SelectPill, ToolButton,
   DataTable, Pagination, usePager, KVGrid, PanelHeader, ErrorBanner, exportCSV,
@@ -87,6 +88,9 @@ export default function ZaqaProgrammesPage() {
             { label: "Regulator note", value: selected.note || "—" },
           ]}
         />
+      </SectionCard>
+      <SectionCard title="Cycle Register" className="mb-4" pad="p-4">
+        <CatalogueView programme={selected} compact />
       </SectionCard>
       <SectionCard title="Case History" className="mb-4" pad="p-4">
         <CaseTimeline events={selected.events} />

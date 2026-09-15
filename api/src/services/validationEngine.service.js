@@ -5,8 +5,9 @@
 import { Issuer, CredentialIndex } from "../models/index.js";
 import { verifyOnChain } from "./web3.service.js";
 import { normaliseNationalId } from "../utils/nationalId.js";
+import { checkScope, findProgramme, checkProgrammeCycle } from "./scope.service.js";
 
-const CRITICAL_RULES = ["Issuer registered", "Issuer authorised", "Blockchain anchor & signature"];
+const CRITICAL_RULES = ["Issuer registered", "Issuer authorised", "Blockchain anchor & signature", "Accreditation scope at award time", "Programme offered in award year"];
 
 /**
  * Run all configured checks against a credential index record.
@@ -36,6 +37,14 @@ export async function runValidationChecks(cred) {
         : match ? cred.qualification : `"${cred.qualification}" is not in the accredited-programme register`
     );
   }
+
+  // Step 2b — was the institution allowed to award THIS at THAT time? Regulator / ZAQA scope
+  // entries in force in the award year, then the programme's own cycle register.
+  const scope = checkScope(issuer, { credentialType: cred.credentialType, zqfLevel: cred.zqfLevel, graduationYear: cred.graduationYear });
+  add("Accreditation scope at award time", scope.ok, scope.detail);
+  const programme = issuer ? await findProgramme(issuer._id, cred.qualification) : null;
+  const cycle = checkProgrammeCycle(programme, cred.graduationYear);
+  add("Programme offered in award year", cycle.ok, cycle.detail);
 
   // Step 3 — qualification rules.
   add("ZQF level assigned", cred.zqfLevel != null, cred.zqfLevel != null ? `Level ${cred.zqfLevel}` : "no ZQF level recorded");

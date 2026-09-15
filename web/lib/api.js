@@ -113,6 +113,8 @@ export const api = {
   myProgrammes: (token) => request(`/api/programmes/mine`, { token }),
   submitProgramme: (token, id) =>
     request(`/api/programmes/${id}/submit`, { token, method: "POST", body: "{}" }),
+  saveProgrammeCatalogue: (token, id, body) =>
+    request(`/api/programmes/${id}/catalogue`, { token, method: "PUT", body: JSON.stringify(body) }),
   // programmes (HEA / TEVETA / ECZ decide; ZAQA reads the outcome)
   allProgrammes: (token, status) => request(`/api/programmes${status ? `?status=${status}` : ""}`, { token }),
   pendingProgrammes: (token) => request(`/api/programmes/pending`, { token }),
@@ -146,6 +148,8 @@ export const api = {
     request(`/api/hea/institutions/${id}/programs`, {
       token, method: "PATCH", body: JSON.stringify({ accreditedPrograms }),
     }),
+  heaSetScopes: (token, id, scopes) =>
+    request(`/api/hea/institutions/${id}/scopes`, { token, method: "PATCH", body: JSON.stringify({ scopes }) }),
   heaMonitoring: (token) => request(`/api/hea/monitoring`, { token }),
   heaCredentials: (token, params = "") => request(`/api/hea/credentials${params}`, { token }),
 
@@ -166,6 +170,8 @@ export const api = {
     request(`/api/teveta/institutions/${id}/programs`, {
       token, method: "PATCH", body: JSON.stringify({ accreditedPrograms }),
     }),
+  tevetaSetScopes: (token, id, scopes) =>
+    request(`/api/teveta/institutions/${id}/scopes`, { token, method: "PATCH", body: JSON.stringify({ scopes }) }),
   tevetaMonitoring: (token) => request(`/api/teveta/monitoring`, { token }),
   tevetaCredentials: (token, params = "") => request(`/api/teveta/credentials${params}`, { token }),
   async tevetaAccreditationCertificate(token, id) {
@@ -190,6 +196,8 @@ export const api = {
     request(`/api/zaqa/registry/${id}`, {
       token, method: "PATCH", body: JSON.stringify({ zaqaTrusted, note }),
     }),
+  zaqaSetScopes: (token, id, scopes) =>
+    request(`/api/zaqa/registry/${id}/scopes`, { token, method: "PATCH", body: JSON.stringify({ scopes }) }),
   zaqaValidationList: (token, status) =>
     request(`/api/zaqa/validation${status ? `?status=${status}` : ""}`, { token }),
   zaqaCredentialsByStatus: (token, credStatus) =>

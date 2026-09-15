@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import PortalShell from "../../../../components/portal/shell";
+import { ScopeList, ScopeModal } from "../../../../components/portal/ScopeEditor";
 import {
   Badge, Avatar, StatCard, StatRow, SectionCard, SelectPill, SearchBox,
   ToolButton, DataTable, Pagination, usePager, KVGrid, ActionBtn, Modal,
@@ -98,7 +99,7 @@ function ProgrammesModal({ inst, busy, onClose, onSave }) {
   );
 }
 
-function DetailPanel({ inst, busy, onClose, onApprove, onReject, onSuspend, onReinstate, onViewDoc, onCertificate, onEditProgrammes }) {
+function DetailPanel({ inst, busy, onClose, onApprove, onReject, onSuspend, onReinstate, onViewDoc, onCertificate, onEditProgrammes, onEditScope }) {
   const status = inst.heaStatus || "approved";
   return (
     <div>
@@ -165,6 +166,20 @@ function DetailPanel({ inst, busy, onClose, onApprove, onReject, onSuspend, onRe
         )}
       </SectionCard>
 
+      <SectionCard
+        title="Scope of Accreditation"
+        action={
+          <button type="button" onClick={() => onEditScope(inst)} className="text-[11px] font-semibold text-orange-600 hover:underline">
+            Edit TEVETA scope
+          </button>
+        }
+        className="mb-4"
+        pad="p-3.5"
+      >
+        <ScopeList scopes={inst.accreditationScopes} />
+        <p className="mt-2 text-[11px] text-slate-400">Awards outside the scope in force in their award year are blocked at issuance and flagged as critical in ZAQA validation.</p>
+      </SectionCard>
+
       <SectionCard title="Case History" className="mb-4" pad="p-4">
         <CaseTimeline events={inst.events} />
       </SectionCard>
@@ -212,6 +227,8 @@ export default function TevetaDashboardPage() {
   const [sel, setSel] = useState(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [progFor, setProgFor] = useState(null);
+  const [scopeFor, setScopeFor] = useState(null);
+  const [scopeError, setScopeError] = useState(null);
   const [institutions, setInstitutions] = useState([]);
   const [pending, setPending] = useState([]);
   const [monitoring, setMonitoring] = useState(null);
@@ -302,6 +319,13 @@ export default function TevetaDashboardPage() {
     catch (err) { setError(err.message); }
     finally { setBusy(null); }
   }
+  async function saveScopes(scopes) {
+    if (!scopeFor) return;
+    setBusy(scopeFor.id); setScopeError(null);
+    try { await api.tevetaSetScopes(token, scopeFor.id, scopes); setScopeFor(null); await load(); }
+    catch (err) { setScopeError(err.message); }
+    finally { setBusy(null); }
+  }
   async function saveProgrammes(inst, list) {
     setBusy(inst.id); setError(null);
     try { await api.tevetaSetPrograms(token, inst.id, list); setProgFor(null); await load(); }
@@ -360,6 +384,7 @@ export default function TevetaDashboardPage() {
             onViewDoc={viewDoc}
             onCertificate={certificate}
             onEditProgrammes={setProgFor}
+            onEditScope={(i) => { setScopeFor(i); setScopeError(null); }}
           />
         ) : null
       }
@@ -514,6 +539,7 @@ export default function TevetaDashboardPage() {
 
       <RegisterModal open={registerOpen} onClose={() => setRegisterOpen(false)} onCreated={load} token={token} />
       <ProgrammesModal inst={progFor} busy={busy === progFor?.id} onClose={() => setProgFor(null)} onSave={saveProgrammes} />
+      <ScopeModal open={!!scopeFor} institution={scopeFor} regulator="TEVETA" scopes={scopeFor?.accreditationScopes || []} busy={busy === scopeFor?.id} error={scopeError} onClose={() => { setScopeFor(null); setScopeError(null); }} onSave={saveScopes} />
     </PortalShell>
   );
 }

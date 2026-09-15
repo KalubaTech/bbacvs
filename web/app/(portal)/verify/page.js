@@ -233,6 +233,20 @@ export default function VerifyPage() {
                     value={result.summary.programmeAccredited ? "Programme accredited" : "Not confirmed against the accredited programme list"}
                   />
                 )}
+                {result.summary.scopeAtAward != null && (
+                  <SummaryRow
+                    ok={result.summary.scopeAtAward === true}
+                    label="Accredited for this award at the time"
+                    value={result.summary.scopeAtAward ? "Within the institution's accreditation scope in the award year" : (result.summary.eligibilityDetail || "Outside the accreditation scope in force in the award year")}
+                  />
+                )}
+                {result.summary.programmeOfferedInYear != null && (
+                  <SummaryRow
+                    ok={result.summary.programmeOfferedInYear === true}
+                    label="Programme running in award year"
+                    value={result.summary.programmeOfferedInYear ? "The programme's cycle register covers the award year" : (result.summary.eligibilityDetail || "No recorded programme cycle covers the award year")}
+                  />
+                )}
                 <SummaryRow
                   ok={result.summary.issuerAuthority === true}
                   label="Issuer authority"
