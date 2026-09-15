@@ -4,7 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../lib/api";
 import { getToken, getUser, getAuth, setAuth } from "../../../lib/auth";
-import { Button, Field, Alert, PageHeader } from "../../../components/ui";
+import { Button, Field, Alert } from "../../../components/ui";
+import AutoShell from "../../../components/portal/AutoShell";
+
 import { Badge, SectionCard, Avatar, KVGrid } from "../../../components/portal/kit";
 
 const ROLE_LABEL = {
@@ -16,13 +18,6 @@ const ROLE_LABEL = {
   issuer: "Institution issuing officer",
   holder: "Graduate",
 };
-
-const accountIcon = (
-  <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 21c0-4 3.6-6 8-6s8 2 8 6" />
-  </svg>
-);
 
 export default function AccountPage() {
   const router = useRouter();
@@ -104,10 +99,9 @@ export default function AccountPage() {
 
   if (!profile) {
     return (
-      <div>
-        <PageHeader icon={accountIcon} title="My account" />
+      <AutoShell active="settings" title="My account">
         {error ? <Alert>{error}</Alert> : <p className="py-8 text-center text-[13px] text-slate-400">Loading…</p>}
-      </div>
+      </AutoShell>
     );
   }
 
@@ -117,9 +111,7 @@ export default function AccountPage() {
     : "amber";
 
   return (
-    <div>
-      <PageHeader icon={accountIcon} title="My account" />
-
+    <AutoShell active="settings" title="My account" subtitle="Your profile, institution contact details and password.">
       {error && <div className="mb-4"><Alert>{error}</Alert></div>}
 
       {/* Identity header */}
@@ -216,6 +208,6 @@ export default function AccountPage() {
           </form>
         </SectionCard>
       </div>
-    </div>
+    </AutoShell>
   );
 }

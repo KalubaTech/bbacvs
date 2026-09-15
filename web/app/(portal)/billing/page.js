@@ -8,15 +8,10 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api, openBlob } from "../../../lib/api";
 import { getToken, getUser } from "../../../lib/auth";
-import { Button, Field, Alert, PageHeader } from "../../../components/ui";
-import { Badge, SectionCard } from "../../../components/portal/kit";
+import { Button, Field, Alert } from "../../../components/ui";
+import AutoShell from "../../../components/portal/AutoShell";
 
-const billIcon = (
-  <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 3h14v18l-2-1.5L15 21l-2-1.5L11 21l-2-1.5L7 21l-2-1.5V3z" />
-    <path d="M9 8h6M9 12h6" />
-  </svg>
-);
+import { Badge, SectionCard, StatusTabs } from "../../../components/portal/kit";
 
 const BILLERS = ["issuer", "zaqa", "admin"];
 const money = (n) => `K${Number(n || 0).toLocaleString()}`;
@@ -394,27 +389,17 @@ export default function BillingPage() {
   ];
 
   return (
-    <div>
-      <PageHeader
-        icon={billIcon}
-        title="Billing"
-        subtitle="Invoices & quotations, payments and receipts — validation fees per the published ZAQA fee schedule."
-      />
-      <div className="mb-5 flex flex-wrap items-center gap-1 border-b border-slate-200">
-        {TABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`-mb-px whitespace-nowrap border-b-2 px-3.5 py-2 text-[13px] transition ${
-              tab === t.id
-                ? "border-[#0d1b3a] font-semibold text-[#0d1b3a]"
-                : "border-transparent font-medium text-slate-500 hover:text-slate-700"
-            }`}>
-            {t.label}
-          </button>
-        ))}
+    <AutoShell
+      active="billing"
+      title="Billing"
+      subtitle="Invoices & quotations, payments and receipts — validation fees per the published ZAQA fee schedule."
+    >
+      <div className="mb-5">
+        <StatusTabs tabs={TABS} active={TABS.find((t) => t.id === tab)?.label} onChange={(label) => setTab(TABS.find((t) => t.label === label)?.id || "invoices")} />
       </div>
       {tab === "invoices" && <InvoicesTab user={user} reloadKey={reloadKey} onChanged={bump} />}
       {tab === "payments" && <PaymentsTab user={user} reloadKey={reloadKey} onChanged={bump} />}
       {tab === "receipts" && <ReceiptsTab user={user} reloadKey={reloadKey} />}
-    </div>
+    </AutoShell>
   );
 }

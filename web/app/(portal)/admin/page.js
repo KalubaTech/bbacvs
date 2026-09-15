@@ -4,15 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../lib/api";
 import { getToken, getUser } from "../../../lib/auth";
-import { Button, Field, Alert, PageHeader } from "../../../components/ui";
+import { Button, Field, Alert } from "../../../components/ui";
+import AutoShell from "../../../components/portal/AutoShell";
+
 import { TeamCard, ActivityCard } from "../../../components/manage";
 import { Badge, StatCard, StatRow, SectionCard, Avatar } from "../../../components/portal/kit";
-
-const shieldIcon = (
-  <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 3l7 3v6c0 4.5-3 8.5-7 9.7C8 20.5 5 16.5 5 12V6l7-3z" /><path d="M9 12l2 2 4-4" />
-  </svg>
-);
 
 export default function AdminPage() {
   const router = useRouter();
@@ -49,11 +45,7 @@ export default function AdminPage() {
   const onChainCount = issuers.filter((i) => i.onChain).length;
 
   return (
-    <div>
-      <PageHeader
-        icon={shieldIcon}
-        title="Platform administration"
-      />
+    <AutoShell active="dashboard" title="Platform administration" subtitle="Register issuing institutions, manage authority accounts and review system activity.">
 
       <StatRow cols={3}>
         <StatCard icon="bank" iconTone="softblue" label="Registered institutions" value={issuers.length} />
@@ -114,6 +106,6 @@ export default function AdminPage() {
         <TeamCard />
         <ActivityCard title="System activity — who changed what" />
       </div>
-    </div>
+    </AutoShell>
   );
 }

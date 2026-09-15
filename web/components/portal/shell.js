@@ -67,7 +67,7 @@ export default function PortalShell({
   }, []);
 
   useEffect(() => {
-    setAuthUser(getUser());
+    setAuthUser(getUser() || false);
   }, []);
 
   // Live unread notification count, refreshed every 60s.
@@ -119,6 +119,7 @@ export default function PortalShell({
   }
 
   const t = PORTALS[portal];
+  const signedOut = !user && authUser === false;
   const displayUser =
     user ||
     (authUser
@@ -264,6 +265,15 @@ export default function PortalShell({
             )}
           </div>
           <div className="ml-auto flex items-center gap-3">
+            {signedOut ? (
+              <>
+                <Link href="/register" className="hidden text-[13px] font-medium text-slate-600 hover:text-slate-900 sm:inline">Create account</Link>
+                <Link href="/login" className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[13px] font-semibold ${t.accentBtn}`}>
+                  <Icon name="user" className="h-4 w-4" /> Sign in
+                </Link>
+              </>
+            ) : (
+            <>
             <Link href={t.bellHref} className="relative text-slate-500 hover:text-slate-700" aria-label="Notifications">
               <Icon name="bell" className="h-5 w-5" />
               {bell ? (
@@ -312,6 +322,8 @@ export default function PortalShell({
                 </>
               )}
             </div>
+            </>
+            )}
           </div>
         </header>
 

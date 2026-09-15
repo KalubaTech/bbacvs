@@ -51,6 +51,7 @@ export const PORTALS = {
           { label: "Disputes & Appeals", icon: "clock", href: "/zaqa/disputes", id: "disputes" },
           { label: "Suspensions", icon: "user", href: "/zaqa/suspensions", id: "suspensions" },
           { label: "Revocations", icon: "revoke", href: "/zaqa/revocations", id: "revocations" },
+          { label: "Verify a Credential", icon: "shieldCheck", href: "/verify", id: "verify" },
         ],
       },
       {
@@ -102,6 +103,7 @@ export const PORTALS = {
         items: [
           { label: "Evidence for ZAQA", icon: "fileText", href: "/hea/evidence", id: "evidence" },
           { label: "Disputes", icon: "clock", href: "/hea/disputes", id: "disputes" },
+          { label: "Verify a Credential", icon: "shieldCheck", href: "/verify", id: "verify" },
         ],
       },
       {
@@ -151,6 +153,7 @@ export const PORTALS = {
         items: [
           { label: "ZAQA Verification Requests", icon: "shieldCheck", href: "/ecz/requests", id: "requests" },
           { label: "Disputes & Corrections", icon: "clock", href: "/ecz/disputes", id: "disputes" },
+          { label: "Verify a Credential", icon: "shieldCheck", href: "/verify", id: "verify" },
         ],
       },
       {
@@ -205,6 +208,7 @@ export const PORTALS = {
         items: [
           { label: "Certification Records", icon: "file", href: "/teveta/certification", id: "certification" },
           { label: "Disputes", icon: "clock", href: "/teveta/disputes", id: "disputes" },
+          { label: "Verify a Credential", icon: "shieldCheck", href: "/verify", id: "verify" },
         ],
       },
       {
@@ -253,6 +257,9 @@ export const PORTALS = {
           { label: "Graduate Applications", icon: "apps", href: "/institution/applications", id: "applications" },
           { label: "Evidence & ZAQA Requests", icon: "fileText", href: "/institution/evidence", id: "evidence" },
           { label: "Disputes & Corrections", icon: "edit", href: "/institution/disputes", id: "disputes" },
+          { label: "Verify a Credential", icon: "shieldCheck", href: "/verify", id: "verify" },
+          { label: "National Register", icon: "registry", href: "/qualifications", id: "register" },
+          { label: "Instructions & Fees", icon: "info", href: "/instructions", id: "instructions" },
         ],
       },
       {
@@ -298,6 +305,9 @@ export const PORTALS = {
         items: [
           { label: "Verification Activity", icon: "shieldCheck", href: "/graduate/verification", id: "verification" },
           { label: "Corrections & Disputes", icon: "scale", href: "/graduate/disputes", id: "disputes" },
+          { label: "Verify a Credential", icon: "shieldCheck", href: "/verify", id: "verify" },
+          { label: "National Register", icon: "registry", href: "/qualifications", id: "register" },
+          { label: "Instructions & Fees", icon: "info", href: "/instructions", id: "instructions" },
         ],
       },
       {
@@ -310,6 +320,89 @@ export const PORTALS = {
       },
     ],
   },
+  admin: {
+    id: "admin",
+    brand: "BBACVS",
+    brandSub: "PLATFORM ADMIN",
+    subClass: "text-amber-300",
+    sidebar: "bg-[#1b1f2e]",
+    active: "bg-white/10 text-white",
+    accentBtn: "bg-[#1b1f2e] hover:bg-[#2a3047] text-white",
+    chip: { label: "Platform Admin", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+    search: "Search institutions, users, portals...",
+    bellHref: "/admin/notifications",
+    org: { title: "BBACVS Platform Administration", tagline: "Cross-portal oversight of the national credential registry." },
+    nav: [
+      {
+        heading: "Governance",
+        items: [
+          { label: "Dashboard", icon: "dashboard", href: "/admin", id: "dashboard" },
+        ],
+      },
+      {
+        heading: "Authority Portals",
+        items: [
+          { label: "ZAQA", icon: "scale", href: "/zaqa/dashboard", id: "zaqa" },
+          { label: "HEA", icon: "bank", href: "/hea/dashboard", id: "hea" },
+          { label: "TEVETA", icon: "award", href: "/teveta/dashboard", id: "teveta" },
+          { label: "ECZ", icon: "clipboardCheck", href: "/ecz/dashboard", id: "ecz" },
+        ],
+      },
+      {
+        heading: "Credential Trust",
+        items: [
+          { label: "Verify a Credential", icon: "shieldCheck", href: "/verify", id: "verify" },
+          { label: "National Register", icon: "registry", href: "/qualifications", id: "register" },
+        ],
+      },
+      {
+        heading: "Administration",
+        items: [
+          { label: "Billing", icon: "file", href: "/billing", id: "billing" },
+          { label: "Notifications", icon: "bell", href: "/admin/notifications", id: "notifications" },
+          { label: "Settings", icon: "settings", href: "/account", id: "settings" },
+        ],
+      },
+    ],
+  },
+
+  // Signed-out visitors: the public surface (verify, register, instructions) in the same chrome.
+  public: {
+    id: "public",
+    brand: "BBACVS",
+    brandSub: "CREDENTIAL VERIFICATION",
+    subClass: "text-emerald-400",
+    sidebar: "bg-[#0d1b3a]",
+    active: "bg-white/10 text-white",
+    accentBtn: "bg-[#12275c] hover:bg-[#1b3576] text-white",
+    chip: null,
+    search: "Search verify, register, instructions...",
+    bellHref: "/login",
+    org: { title: "National Academic Credential Verification", tagline: "Secure · Tamper-proof · Nationally verifiable" },
+    nav: [
+      {
+        heading: "Public Services",
+        items: [
+          { label: "Verify a Credential", icon: "shieldCheck", href: "/verify", id: "verify" },
+          { label: "National Register", icon: "registry", href: "/qualifications", id: "register" },
+          { label: "Instructions & Fees", icon: "info", href: "/instructions", id: "instructions" },
+        ],
+      },
+      {
+        heading: "Account",
+        items: [
+          { label: "Sign in", icon: "user", href: "/login", id: "login" },
+          { label: "Create graduate account", icon: "users", href: "/register", id: "signup" },
+          { label: "Register an institution", icon: "bank", href: "/register-institution", id: "institution" },
+        ],
+      },
+    ],
+  },
+};
+
+// Signed-in role → the portal whose chrome wraps shared pages (account, billing, verify…).
+export const ROLE_PORTAL = {
+  admin: "admin", zaqa: "zaqa", hea: "hea", teveta: "teveta", ecz: "ecz", issuer: "institution", holder: "graduate",
 };
 
 // Flat list of nav destinations for a portal — used by the topbar quick-search.

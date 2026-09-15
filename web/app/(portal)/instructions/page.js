@@ -1,6 +1,7 @@
 import Link from "next/link";
-import Icon from "../../../components/portal/icons";
 import { SectionCard, KVRow, Badge } from "../../../components/portal/kit";
+import AutoShell from "../../../components/portal/AutoShell";
+
 
 export const metadata = { title: "Instructions & Fees — BBACVS" };
 
@@ -37,17 +38,12 @@ function FeeList() {
 
 export default function InstructionsPage() {
   return (
+    <AutoShell
+      active="instructions"
+      title="Instructions & fees"
+      subtitle="How qualifications are uploaded, validated and paid for on BBACVS."
+    >
     <div className="mx-auto max-w-3xl space-y-5">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0d1b3a] text-white shadow-card">
-          <Icon name="info" className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Instructions &amp; fees</h1>
-          <p className="mt-1 text-[13px] text-slate-500">How qualifications are uploaded, validated and paid for on BBACVS.</p>
-        </div>
-      </div>
-
       {/* Institutions */}
       <SectionCard
         title="For institutions — uploading credentials"
@@ -111,5 +107,6 @@ export default function InstructionsPage() {
         </Link>
       </div>
     </div>
+    </AutoShell>
   );
 }

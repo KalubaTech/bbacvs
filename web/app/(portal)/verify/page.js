@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { api, openBlob } from "../../../lib/api";
 import { Button, Alert } from "../../../components/ui";
+import AutoShell from "../../../components/portal/AutoShell";
+
 import Icon from "../../../components/portal/icons";
 import { Badge } from "../../../components/portal/kit";
 import QrScanner from "../../../components/QrScanner";
@@ -97,17 +99,12 @@ export default function VerifyPage() {
   const state = result ? STATES[result.displayStatus || result.status] || STATES.NOT_FOUND : null;
 
   return (
+    <AutoShell
+      active="verify"
+      title="Verify a credential"
+      subtitle="Check authenticity against the national credential registry — online, or offline from a signed QR."
+    >
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6 flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0d1b3a] text-white shadow-card">
-          <Icon name="shieldCheck" className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Verify a credential</h1>
-          <p className="mt-1 text-[13px] text-slate-500">Check authenticity against the national credential registry — online or offline.</p>
-        </div>
-      </div>
-
       {/* Tabs */}
       <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-1 text-[13px] shadow-card">
         {["paste", "scan"].map((t) => (
@@ -312,6 +309,7 @@ export default function VerifyPage() {
         </div>
       )}
     </div>
+    </AutoShell>
   );
 }
 

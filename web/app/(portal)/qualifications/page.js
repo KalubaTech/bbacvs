@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "../../../lib/api";
+import AutoShell from "../../../components/portal/AutoShell";
+
 import { Badge, DataTable, ErrorBanner, Pagination, SearchBox, SelectPill, KVGrid } from "../../../components/portal/kit";
 
 const TYPE_LABEL = { full: "Full qualification", part: "Part qualification", micro_credential: "Micro-credential" };
@@ -70,14 +72,12 @@ export default function PublicRegister() {
   ];
 
   return (
+    <AutoShell
+      active="register"
+      title="National Qualifications Register"
+      subtitle="Search qualifications registered on the Zambia Qualifications Framework. Every entry shows its NQF level, awarding body and current registration status."
+    >
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">National Qualifications Register</h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-500">
-          Search qualifications registered on the Zambia Qualifications Framework. Every entry shows its
-          NQF level, awarding body and current registration status.
-        </p>
-      </div>
 
       <div className="flex flex-wrap items-center gap-2.5">
         <SearchBox
@@ -172,5 +172,6 @@ export default function PublicRegister() {
         </div>
       )}
     </div>
+    </AutoShell>
   );
 }
