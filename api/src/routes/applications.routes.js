@@ -27,7 +27,7 @@ const router = Router();
 function view(a) {
   return {
     id: a._id, applicantName: a.applicantName, applicantEmail: a.applicantEmail,
-    institution: a.institution, qualification: a.qualification, graduationYear: a.graduationYear,
+    institution: a.institution, qualification: a.qualification, graduationYear: a.graduationYear, studyStartYear: a.studyStartYear ?? null,
     credentialType: a.credentialType, zqfLevel: a.zqfLevel, status: a.status, note: a.note,
     hasDocument: !!a.documentCid, credentialHash: a.credentialHash, createdAt: a.createdAt,
     updatedAt: a.updatedAt, events: a.events || [], // full case timeline
@@ -51,6 +51,7 @@ const applySchema = Joi.object({
   targetIssuerId: Joi.string().required(),
   qualification: Joi.string().min(2).max(160).required(),
   graduationYear: Joi.number().integer().min(1960).max(2100).required(),
+  studyStartYear: Joi.number().integer().min(1950).max(2100).optional().allow(null),
   credentialType: Joi.string().valid("secondary", "diploma", "degree", "masters", "phd", "other").default("other"),
   zqfLevel: Joi.number().integer().min(1).max(10).optional(),
   nationalId: Joi.string().max(40).allow("").optional(),
@@ -116,6 +117,7 @@ router.post("/", requireAuth, requireRole(ROLES.HOLDER), validate(applySchema), 
       applicantNationalId,
       targetIssuer: issuer._id, institution: issuer.institution,
       qualification: req.body.qualification, graduationYear: req.body.graduationYear,
+      studyStartYear: req.body.studyStartYear || undefined,
       credentialType: req.body.credentialType, zqfLevel: req.body.zqfLevel,
       documentCid: cid, documentName: req.body.document.name, documentMime: req.body.document.mime,
       events: [makeEvent(req, "application.submitted", `Applied to digitize ${req.body.qualification} (${req.body.graduationYear})`)],
@@ -171,9 +173,9 @@ router.post("/:id/verify-issue", requireAuth, requireRole(...ISSUING_ROLES), asy
     if (issuer.signingMode !== "server") {
       return res.status(400).json({ error: "MetaMask-signing institutions can't issue digitization requests from here yet." });
     }
-    const claims = { name: app.applicantName, nationalId: app.applicantNationalId, qualification: app.qualification, graduationYear: app.graduationYear };
+    const claims = { name: app.applicantName, nationalId: app.applicantNationalId, qualification: app.qualification, graduationYear: app.graduationYear, studyStartYear: app.studyStartYear || undefined };
     const meta = { zqfLevel: app.zqfLevel, credentialType: issuer.sector === "secondary" ? "secondary" : (app.credentialType || "other") };
-    const eligibility = await eligibilityGate(issuer, { qualification: app.qualification, credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: app.graduationYear });
+    const eligibility = await eligibilityGate(issuer, { qualification: app.qualification, credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: app.graduationYear, studyStartYear: app.studyStartYear });
     if (eligibility) return res.status(eligibility.status).json({ error: eligibility.error, code: eligibility.code });
     // Duplicate-issuance guard: never anchor the same qualification twice for this candidate
     // (matched by email or NRC), and reject a concurrent double-click while the first request

@@ -33,6 +33,7 @@ function view(p) {
     credentialType: p.credentialType, inceptionYear: p.inceptionYear,
     cycles: (p.cycles || []).map((c) => ({
       id: c._id, label: c.label, startYear: c.startYear, endYear: c.endYear ?? null, intake: c.intake,
+      zqfLevel: c.zqfLevel ?? null, accreditationRef: c.accreditationRef || "",
       status: c.status || "offered", note: c.note,
       courses: (c.courses || []).map((k) => ({ code: k.code, title: k.title, year: k.year, semester: k.semester, credits: k.credits })),
     })),
@@ -125,7 +126,9 @@ const cycleSchema = Joi.object({
   startYear: Joi.number().integer().min(1900).max(2100).required(),
   endYear: Joi.number().integer().min(1900).max(2100).optional().allow(null),
   intake: Joi.string().max(80).allow("").optional(),
-  status: Joi.string().valid("offered", "discontinued").default("offered"),
+  zqfLevel: Joi.number().integer().min(1).max(10).optional().allow(null),
+  accreditationRef: Joi.string().max(120).allow("").optional(),
+  status: Joi.string().valid("offered", "suspended", "discontinued").default("offered"),
   note: Joi.string().max(300).allow("").optional(),
   courses: Joi.array().items(courseSchema).max(200).default([]),
 });
@@ -148,7 +151,7 @@ router.put("/:id/catalogue", requireAuth, requireRole(ROLES.ISSUER, ROLES.ECZ), 
     p.inceptionYear = req.body.inceptionYear ?? undefined;
     p.cycles = req.body.cycles.map((c) => ({
       ...c, label: c.label || `${c.startYear}${c.endYear != null && c.endYear !== c.startYear ? `–${c.endYear}` : ""}`,
-      endYear: c.endYear ?? undefined,
+      endYear: c.endYear ?? undefined, zqfLevel: c.zqfLevel ?? undefined, accreditationRef: c.accreditationRef || undefined,
     }));
     pushEvent(p, req, "programme.catalogue_updated", undefined, {
       cyclesBefore: before, cyclesAfter: p.cycles.length,

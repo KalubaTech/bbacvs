@@ -43,7 +43,7 @@ const REVOKE_REASONS = [
 ];
 const INPUT =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100";
-const EMPTY_FORM = { name: "", nationalId: "", holderEmail: "", qualification: "", graduationYear: String(new Date().getFullYear()), credentialType: "degree", zqfLevel: "7" };
+const EMPTY_FORM = { name: "", nationalId: "", holderEmail: "", qualification: "", graduationYear: String(new Date().getFullYear()), studyStartYear: "", credentialType: "degree", zqfLevel: "7" };
 
 function Field({ label, required, hint, children }) {
   return (
@@ -200,6 +200,7 @@ export default function InstitutionIssuancePage() {
           nationalId: form.nationalId.trim() || undefined,
           qualification: form.qualification.trim(),
           graduationYear: Number(form.graduationYear),
+          studyStartYear: form.studyStartYear ? Number(form.studyStartYear) : undefined,
         },
         credentialType: form.credentialType,
         zqfLevel: Number(form.zqfLevel),
@@ -424,6 +425,11 @@ export default function InstitutionIssuancePage() {
               </Field>
               <Field label="Graduation year" required>
                 <input className={INPUT} type="number" min="1950" max="2100" value={form.graduationYear} onChange={set("graduationYear")} />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Study start year" hint="Optional. Lets validation confirm the institution was authorised for the whole study period.">
+                <input className={INPUT} type="number" min="1950" max="2100" value={form.studyStartYear} onChange={set("studyStartYear")} placeholder="2018" />
               </Field>
             </div>
             {(profile?.accreditedPrograms || []).length > 0 && (

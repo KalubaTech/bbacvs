@@ -37,13 +37,19 @@ export function CatalogueView({ programme, compact = false }) {
                     <span className="text-[12.5px] font-semibold text-slate-800">{c.label || span(c)}</span>
                     <span className="ml-2 text-[11.5px] text-slate-400">{span(c)}{c.intake ? ` · ${c.intake}` : ""}</span>
                   </span>
-                  <Badge tone={c.status === "discontinued" ? "slate" : "green"}>{c.status === "discontinued" ? "Discontinued" : "Offered"}</Badge>
+                  {c.zqfLevel != null ? <span className="text-[11px] text-slate-400">ZQF {c.zqfLevel}</span> : null}
+                  <Badge tone={c.status === "discontinued" ? "slate" : c.status === "suspended" ? "red" : "green"}>{c.status === "discontinued" ? "Discontinued" : c.status === "suspended" ? "Suspended" : "Offered"}</Badge>
                   <span className="text-[11px] text-slate-400">{(c.courses || []).length} course{(c.courses || []).length === 1 ? "" : "s"}</span>
                   <span className="text-slate-400">{on ? "▾" : "▸"}</span>
                 </button>
                 {on && (
                   <div className="border-t border-slate-100 bg-slate-50/60 px-3 py-2">
-                    {c.note ? <div className="mb-1.5 text-[11.5px] text-slate-500">{c.note}</div> : null}
+                    {(c.accreditationRef || c.note) ? (
+                      <div className="mb-1.5 text-[11.5px] text-slate-500">
+                        {c.accreditationRef ? <span className="mr-3">Approval ref: <span className="font-semibold text-slate-700">{c.accreditationRef}</span></span> : null}
+                        {c.note}
+                      </div>
+                    ) : null}
                     {(c.courses || []).length === 0 ? (
                       <div className="text-[11.5px] text-slate-400">No courses listed for this cycle.</div>
                     ) : (
@@ -71,7 +77,7 @@ export function CatalogueView({ programme, compact = false }) {
 }
 
 function blankCycle(year) {
-  return { label: "", startYear: String(year), endYear: "", intake: "", status: "offered", note: "", courses: [] };
+  return { label: "", startYear: String(year), endYear: "", intake: "", zqfLevel: "", accreditationRef: "", status: "offered", note: "", courses: [] };
 }
 function blankCourse() {
   return { code: "", title: "", year: "", semester: "", credits: "" };
@@ -90,7 +96,7 @@ export function CatalogueModal({ open, onClose, programme, busy, error, onSave }
     setInception(programme.inceptionYear ? String(programme.inceptionYear) : "");
     setCycles([...(programme.cycles || [])].sort((a, b) => a.startYear - b.startYear).map((c) => ({
       label: c.label || "", startYear: String(c.startYear), endYear: c.endYear == null ? "" : String(c.endYear),
-      intake: c.intake || "", status: c.status || "offered", note: c.note || "",
+      intake: c.intake || "", zqfLevel: c.zqfLevel ?? "", accreditationRef: c.accreditationRef || "", status: c.status || "offered", note: c.note || "",
       courses: (c.courses || []).map((k) => ({ code: k.code || "", title: k.title || "", year: k.year ?? "", semester: k.semester || "", credits: k.credits ?? "" })),
     })));
     setExpanded(0);
@@ -116,7 +122,8 @@ export function CatalogueModal({ open, onClose, programme, busy, error, onSave }
       inceptionYear: inception ? Number(inception) : null,
       cycles: cycles.map((c) => ({
         label: c.label.trim(), startYear: Number(c.startYear), endYear: c.endYear === "" ? null : Number(c.endYear),
-        intake: c.intake.trim(), status: c.status, note: c.note.trim(),
+        intake: c.intake.trim(), zqfLevel: c.zqfLevel === "" ? null : Number(c.zqfLevel), accreditationRef: c.accreditationRef.trim(),
+        status: c.status, note: c.note.trim(),
         courses: c.courses.map((k) => ({
           code: k.code.trim(), title: k.title.trim(), year: k.year === "" ? null : Number(k.year),
           semester: k.semester.trim(), credits: k.credits === "" ? null : Number(k.credits),
@@ -140,8 +147,10 @@ export function CatalogueModal({ open, onClose, programme, busy, error, onSave }
     >
       <ErrorBanner error={error} />
       <p className="mb-3 text-[12px] leading-relaxed text-slate-500">
-        Record every cycle this programme has run since it started, with the courses offered in each. ZAQA and your
-        regulator read this register, and validation checks that a credential&apos;s award year falls inside a cycle.
+        Record every cycle this programme has run since it started, with its level, approval reference and the courses
+        offered. Mark a cycle suspended or discontinued rather than deleting it, so the history stays complete. ZAQA and
+        your regulator read this register, and validation checks that a credential&apos;s study period and award year fall
+        inside cycles that were running.
       </p>
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
         <label className="block">
@@ -176,7 +185,11 @@ export function CatalogueModal({ open, onClose, programme, busy, error, onSave }
                     <label className="block sm:col-span-2"><span className="mb-1 block text-[11px] font-semibold text-slate-600">Cycle label</span><input className={INPUT} value={c.label} placeholder="e.g. 2019/2020" onChange={(e) => upd(i, { label: e.target.value })} /></label>
                     <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">Start year *</span><input type="number" className={INPUT} value={c.startYear} onChange={(e) => upd(i, { startYear: e.target.value })} /></label>
                     <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">End year <span className="font-normal text-slate-400">(blank = ongoing)</span></span><input type="number" className={INPUT} value={c.endYear} onChange={(e) => upd(i, { endYear: e.target.value })} /></label>
-                    <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">Status</span><select className={INPUT} value={c.status} onChange={(e) => upd(i, { status: e.target.value })}><option value="offered">Offered</option><option value="discontinued">Discontinued</option></select></label>
+                    <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">Status</span><select className={INPUT} value={c.status} onChange={(e) => upd(i, { status: e.target.value })}><option value="offered">Offered</option><option value="suspended">Suspended</option><option value="discontinued">Discontinued</option></select></label>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">ZQF level in this cycle</span><select className={INPUT} value={c.zqfLevel} onChange={(e) => upd(i, { zqfLevel: e.target.value })}><option value="">Same as programme</option>{[1,2,3,4,5,6,7,8,9,10].map((l) => <option key={l} value={l}>Level {l}</option>)}</select></label>
+                    <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">Accreditation / approval reference</span><input className={INPUT} value={c.accreditationRef} placeholder="e.g. HEA/ACC/2019/031" onChange={(e) => upd(i, { accreditationRef: e.target.value })} /></label>
                   </div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="block"><span className="mb-1 block text-[11px] font-semibold text-slate-600">Intake / mode</span><input className={INPUT} value={c.intake} placeholder="e.g. January intake, full-time" onChange={(e) => upd(i, { intake: e.target.value })} /></label>

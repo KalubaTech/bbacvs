@@ -106,7 +106,7 @@ function DigitisationTab({ token }) {
   const [apps, setApps] = useState([]);
   const [loadingApps, setLoadingApps] = useState(true);
   const [form, setForm] = useState({
-    targetIssuerId: "", qualification: "", graduationYear: "", credentialType: "degree", zqfLevel: "7", nationalId: "",
+    targetIssuerId: "", qualification: "", graduationYear: "", studyStartYear: "", credentialType: "degree", zqfLevel: "7", nationalId: "",
   });
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
@@ -152,6 +152,7 @@ function DigitisationTab({ token }) {
         targetIssuerId: form.targetIssuerId,
         qualification: form.qualification.trim(),
         graduationYear: Number(form.graduationYear),
+        studyStartYear: form.studyStartYear ? Number(form.studyStartYear) : undefined,
         credentialType: form.credentialType,
         zqfLevel: Number(form.zqfLevel),
         nationalId: form.nationalId || undefined,
@@ -219,6 +220,10 @@ function DigitisationTab({ token }) {
             <label className="block">
               <span className="mb-1 block text-[12px] font-semibold text-slate-700">Year *</span>
               <input type="number" min="1960" max="2100" className={inputCls} value={form.graduationYear} onChange={set("graduationYear")} placeholder="2020" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[12px] font-semibold text-slate-700">Year you started the programme <span className="font-normal text-slate-400">(optional)</span></span>
+              <input type="number" min="1950" max="2100" className={inputCls} value={form.studyStartYear} onChange={set("studyStartYear")} placeholder="2016" />
             </label>
           </div>
           <label className="block">

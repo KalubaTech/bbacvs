@@ -120,9 +120,9 @@ router.get("/:id", async (req, res, next) => {
     // programme actually running then? null when nothing is recorded to judge against.
     let scopeAtAward = null, programmeOfferedInYear = null, eligibilityDetail = null;
     if (meta && issuerRec) {
-      const scope = checkScope(issuerRec, { credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: meta.graduationYear });
+      const scope = checkScope(issuerRec, { credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: meta.graduationYear, studyStartYear: meta.studyStartYear, qualification: meta.qualification });
       if (scope.applicable) { scopeAtAward = scope.ok; if (!scope.ok) eligibilityDetail = scope.detail; }
-      const cycle = checkProgrammeCycle(await findProgramme(meta.issuer, meta.qualification), meta.graduationYear);
+      const cycle = checkProgrammeCycle(await findProgramme(meta.issuer, meta.qualification), meta.graduationYear, { studyStartYear: meta.studyStartYear, zqfLevel: meta.zqfLevel });
       if (cycle.applicable) { programmeOfferedInYear = cycle.ok; if (!cycle.ok && !eligibilityDetail) eligibilityDetail = cycle.detail; }
     }
 
@@ -178,6 +178,7 @@ router.get("/:id", async (req, res, next) => {
             nationalId: maskNationalId(meta.holderNationalId),
             qualification: meta.qualification,
             graduationYear: meta.graduationYear,
+            studyStartYear: meta.studyStartYear ?? null,
             holderDID: meta.holderDID,
             zqfLevel: meta.zqfLevel,
             credentialType: meta.credentialType,

@@ -88,6 +88,7 @@ const issuerSchema = new mongoose.Schema(
       {
         regulator: { type: String, enum: ["HEA", "TEVETA", "ECZ", "ZAQA"], required: true },
         allowedTypes: { type: [String], default: [] },
+        programmes: { type: [String], default: [] }, // named programmes only (empty = any accredited programme)
         maxZqfLevel: { type: Number, min: 1, max: 10 },
         validFrom: { type: Date, required: true },
         validTo: { type: Date },
@@ -136,6 +137,7 @@ const credentialIndexSchema = new mongoose.Schema(
     holderNationalId: { type: String }, // NRC / passport (shown on the ZAQA verification cert)
     qualification: { type: String },
     graduationYear: { type: Number },
+    studyStartYear: { type: Number }, // year the holder began the programme (optional; used for period checks)
     // ZQF (national qualifications framework) level, and the kind of qualification.
     zqfLevel: { type: Number, min: 1, max: 10 },
     credentialType: {
@@ -226,7 +228,9 @@ const programmeSchema = new mongoose.Schema(
         startYear: { type: Number, required: true },
         endYear: { type: Number },        // null = ongoing
         intake: { type: String },         // e.g. "January", "Full-time"
-        status: { type: String, enum: ["offered", "discontinued"], default: "offered" },
+        zqfLevel: { type: Number, min: 1, max: 10 },   // level at which the programme ran in this cycle
+        accreditationRef: { type: String },            // regulator approval / accreditation reference for this cycle
+        status: { type: String, enum: ["offered", "suspended", "discontinued"], default: "offered" },
         note: { type: String },
         courses: [
           {
@@ -256,6 +260,7 @@ const applicationSchema = new mongoose.Schema(
     institution: { type: String }, // denormalised institution name
     qualification: { type: String },
     graduationYear: { type: Number },
+    studyStartYear: { type: Number },
     credentialType: { type: String, enum: ["secondary", "diploma", "degree", "masters", "phd", "other"], default: "other" },
     zqfLevel: { type: Number, min: 1, max: 10 },
     // Uploaded proof (scanned paper credential), pinned to IPFS.

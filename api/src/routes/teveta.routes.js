@@ -135,6 +135,7 @@ router.patch("/institutions/:id/programs", ...tevetaOnly, validate(programsSchem
 // what the institution may award (types, max ZQF level) and during which period.
 const scopeEntrySchema = Joi.object({
   allowedTypes: Joi.array().items(Joi.string().valid("secondary", "diploma", "degree", "masters", "phd", "other")).default([]),
+  programmes: Joi.array().items(Joi.string().max(160)).max(200).default([]),
   maxZqfLevel: Joi.number().integer().min(1).max(10).optional().allow(null),
   validFrom: Joi.date().required(),
   validTo: Joi.date().optional().allow(null),

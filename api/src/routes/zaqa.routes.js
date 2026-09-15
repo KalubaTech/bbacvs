@@ -103,6 +103,7 @@ router.patch("/registry/:id", ...zaqaOnly, validate(trustSchema), async (req, re
 // award and when (in addition to the sector regulator's own scope entries).
 const zaqaScopeEntry = Joi.object({
   allowedTypes: Joi.array().items(Joi.string().valid("secondary", "diploma", "degree", "masters", "phd", "other")).default([]),
+  programmes: Joi.array().items(Joi.string().max(160)).max(200).default([]),
   maxZqfLevel: Joi.number().integer().min(1).max(10).optional().allow(null),
   validFrom: Joi.date().required(),
   validTo: Joi.date().optional().allow(null),

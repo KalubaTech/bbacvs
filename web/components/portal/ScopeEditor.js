@@ -26,7 +26,8 @@ export function describeScope(s) {
   const period = `${yr(s.validFrom) ?? "?"} – ${s.validTo ? yr(s.validTo) : "open"}`;
   const types = s.allowedTypes?.length ? s.allowedTypes.map((t) => TYPE_LABEL[t] || t).join(", ") : "Any award type";
   const level = s.maxZqfLevel != null ? ` · up to ZQF ${s.maxZqfLevel}` : "";
-  return `${period} · ${types}${level}`;
+  const progs = s.programmes?.length ? ` · ${s.programmes.length} named programme${s.programmes.length === 1 ? "" : "s"}` : "";
+  return `${period} · ${types}${level}${progs}`;
 }
 
 /** Read-only list of an institution's scope entries, grouped by the authority that set them. */
@@ -51,6 +52,7 @@ export function ScopeList({ scopes = [], emptyText = "No scope restrictions reco
                   <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-emerald-500" : "bg-slate-300"}`} />
                   <span className="min-w-0">
                     {describeScope(s)}
+                    {s.programmes?.length ? <span className="block text-[11.5px] text-slate-500">Programmes: {s.programmes.join(", ")}</span> : null}
                     {s.note ? <span className="block text-[11.5px] text-slate-400">{s.note}</span> : null}
                   </span>
                 </li>
@@ -66,7 +68,7 @@ export function ScopeList({ scopes = [], emptyText = "No scope restrictions reco
 const INPUT = "w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12.5px] text-slate-700 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100";
 
 function blankEntry() {
-  return { allowedTypes: [], maxZqfLevel: "", validFrom: `${new Date().getFullYear()}-01-01`, validTo: "", note: "" };
+  return { allowedTypes: [], programmes: "", maxZqfLevel: "", validFrom: `${new Date().getFullYear()}-01-01`, validTo: "", note: "" };
 }
 
 /**
@@ -79,7 +81,7 @@ export function ScopeModal({ open, onClose, institution, regulator, scopes = [],
   useEffect(() => {
     if (!open) return;
     setRows(scopes.filter((s) => s.regulator === regulator).map((s) => ({
-      allowedTypes: s.allowedTypes || [], maxZqfLevel: s.maxZqfLevel ?? "", validFrom: iso(s.validFrom), validTo: iso(s.validTo), note: s.note || "",
+      allowedTypes: s.allowedTypes || [], programmes: (s.programmes || []).join("\n"), maxZqfLevel: s.maxZqfLevel ?? "", validFrom: iso(s.validFrom), validTo: iso(s.validTo), note: s.note || "",
     })));
   }, [open, scopes, regulator]);
   const others = scopes.filter((s) => s.regulator !== regulator);
@@ -91,6 +93,7 @@ export function ScopeModal({ open, onClose, institution, regulator, scopes = [],
   function save() {
     onSave(rows.map((r) => ({
       allowedTypes: r.allowedTypes,
+      programmes: r.programmes.split("\n").map((x) => x.trim()).filter(Boolean),
       maxZqfLevel: r.maxZqfLevel === "" ? null : Number(r.maxZqfLevel),
       validFrom: r.validFrom, validTo: r.validTo || null, note: r.note || "",
     })));
@@ -112,7 +115,8 @@ export function ScopeModal({ open, onClose, institution, regulator, scopes = [],
       <ErrorBanner error={error} />
       <p className="mb-3 text-[12px] leading-relaxed text-slate-500">
         Each entry says what this institution may award and for which period. A credential must fit an entry in force
-        in its <span className="font-semibold text-slate-700">award year</span>. Leave the award types empty to allow any type;
+        in its <span className="font-semibold text-slate-700">award year</span> and, when the study start year is known,
+        when studies began. Leave the award types empty to allow any type;
         leave the end date empty for an open-ended entry. Add a new entry rather than editing an old one when the scope
         changes, so history stays intact.
       </p>
@@ -156,6 +160,10 @@ export function ScopeModal({ open, onClose, institution, regulator, scopes = [],
                 })}
               </div>
             </div>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-[11px] font-semibold text-slate-600">Programmes authorised <span className="font-normal text-slate-400">(one per line; blank = any accredited programme)</span></span>
+              <textarea rows={2} className={INPUT} value={r.programmes} placeholder={"Diploma in ICT\nDiploma in Accountancy"} onChange={(e) => update(i, { programmes: e.target.value })} />
+            </label>
             <div className="mt-3 flex items-end gap-2">
               <label className="block flex-1">
                 <span className="mb-1 block text-[11px] font-semibold text-slate-600">Note</span>

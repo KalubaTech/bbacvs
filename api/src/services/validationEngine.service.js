@@ -40,10 +40,10 @@ export async function runValidationChecks(cred) {
 
   // Step 2b — was the institution allowed to award THIS at THAT time? Regulator / ZAQA scope
   // entries in force in the award year, then the programme's own cycle register.
-  const scope = checkScope(issuer, { credentialType: cred.credentialType, zqfLevel: cred.zqfLevel, graduationYear: cred.graduationYear });
+  const scope = checkScope(issuer, { credentialType: cred.credentialType, zqfLevel: cred.zqfLevel, graduationYear: cred.graduationYear, studyStartYear: cred.studyStartYear, qualification: cred.qualification });
   add("Accreditation scope at award time", scope.ok, scope.detail);
   const programme = issuer ? await findProgramme(issuer._id, cred.qualification) : null;
-  const cycle = checkProgrammeCycle(programme, cred.graduationYear);
+  const cycle = checkProgrammeCycle(programme, cred.graduationYear, { studyStartYear: cred.studyStartYear, zqfLevel: cred.zqfLevel });
   add("Programme offered in award year", cycle.ok, cycle.detail);
 
   // Step 3 — qualification rules.

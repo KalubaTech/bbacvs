@@ -122,6 +122,7 @@ export async function indexCredential(issuer, holderEmail, claims, prep, { statu
     issuerPublicKey: issuer.publicKey, holderDID: prep.holderDID, holderEmail: holderEmail?.toLowerCase(),
     subjectName: claims.name, holderNationalId: normaliseNationalId(claims.nationalId),
     qualification: claims.qualification, graduationYear: claims.graduationYear,
+    studyStartYear: claims.studyStartYear || undefined,
     zqfLevel: meta.zqfLevel, credentialType: meta.credentialType,
     qrPayload: prep.qrPayload, status, anchorTx,
   });

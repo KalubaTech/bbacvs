@@ -94,6 +94,7 @@ const issueSchema = Joi.object({
     nationalId: Joi.string().max(40).allow("").optional(), // NRC / passport (optional)
     qualification: Joi.string().required(),
     graduationYear: Joi.number().integer().min(1960).max(2100).required(),
+    studyStartYear: Joi.number().integer().min(1950).max(2100).optional().allow(null),
   }).required(),
   zqfLevel: Joi.number().integer().min(1).max(10).optional(),
   credentialType: Joi.string().valid("secondary", "diploma", "degree", "masters", "phd", "other").optional(),
@@ -113,7 +114,7 @@ router.post("/issue", requireAuth, requireRole(...ISSUING_ROLES), validate(issue
     if (allowed) return res.status(409).json({ error: "programme_not_accredited", allowed });
     const eligibility = await eligibilityGate(issuer, {
       qualification: claims.qualification, credentialType: resolveCredentialType(issuer, credentialType),
-      zqfLevel, graduationYear: claims.graduationYear,
+      zqfLevel, graduationYear: claims.graduationYear, studyStartYear: claims.studyStartYear,
     });
     if (eligibility) return res.status(eligibility.status).json({ error: eligibility.error, code: eligibility.code });
     const lock = await guardDuplicateIssuance(res, {
@@ -150,7 +151,7 @@ router.post("/prepare", requireAuth, requireRole(...ISSUING_ROLES), validate(iss
     if (allowed) return res.status(409).json({ error: "programme_not_accredited", allowed });
     const eligibility = await eligibilityGate(issuer, {
       qualification: claims.qualification, credentialType: resolveCredentialType(issuer, credentialType),
-      zqfLevel, graduationYear: claims.graduationYear,
+      zqfLevel, graduationYear: claims.graduationYear, studyStartYear: claims.studyStartYear,
     });
     if (eligibility) return res.status(eligibility.status).json({ error: eligibility.error, code: eligibility.code });
     // A PENDING record from an earlier /prepare counts as a duplicate too — the institution
@@ -426,6 +427,7 @@ router.post("/:hash/supersede", requireAuth, requireRole(...ISSUING_ROLES), vali
       nationalId: cred.holderNationalId,
       qualification: req.body.qualification ?? cred.qualification,
       graduationYear: req.body.graduationYear ?? cred.graduationYear,
+      studyStartYear: cred.studyStartYear,
     };
     const allowed = await programmeGate(issuer._id, claims.qualification);
     if (allowed) return res.status(409).json({ error: "programme_not_accredited", allowed });
@@ -433,7 +435,7 @@ router.post("/:hash/supersede", requireAuth, requireRole(...ISSUING_ROLES), vali
       zqfLevel: req.body.zqfLevel ?? cred.zqfLevel,
       credentialType: resolveCredentialType(issuer, req.body.credentialType ?? cred.credentialType),
     };
-    const eligibility = await eligibilityGate(issuer, { qualification: claims.qualification, credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: claims.graduationYear });
+    const eligibility = await eligibilityGate(issuer, { qualification: claims.qualification, credentialType: meta.credentialType, zqfLevel: meta.zqfLevel, graduationYear: claims.graduationYear, studyStartYear: claims.studyStartYear });
     if (eligibility) return res.status(eligibility.status).json({ error: eligibility.error, code: eligibility.code });
     // The corrected record must not collide with ANOTHER live credential (the one being
     // superseded is excluded — it is revoked below), and a double-clicked "Reissue" must not
