@@ -111,6 +111,7 @@ export const PORTALS = {
         items: [
           { label: "Institutions & Accreditation", icon: "bank", href: "/hea/institutions", id: "institutions" },
           { label: "Users & Officers", icon: "users", href: "/hea/users", id: "users" },
+          { label: "Billing & Invoices", icon: "file", href: "/billing", id: "billing" },
           { label: "Settings", icon: "settings", href: "/account", id: "settings" },
         ],
       },
@@ -161,6 +162,7 @@ export const PORTALS = {
         items: [
           { label: "Learner Records", icon: "users", href: "/ecz/learners", id: "learners" },
           { label: "User Roles", icon: "user", href: "/ecz/users", id: "users" },
+          { label: "Billing & Invoices", icon: "file", href: "/billing", id: "billing" },
           { label: "Settings", icon: "settings", href: "/account", id: "settings" },
         ],
       },
@@ -215,6 +217,7 @@ export const PORTALS = {
         heading: "Administration",
         items: [
           { label: "Users & Officers", icon: "users", href: "/teveta/users", id: "users" },
+          { label: "Billing & Invoices", icon: "file", href: "/billing", id: "billing" },
           { label: "Settings", icon: "settings", href: "/account", id: "settings" },
         ],
       },
@@ -337,15 +340,7 @@ export const PORTALS = {
         heading: "Governance",
         items: [
           { label: "Dashboard", icon: "dashboard", href: "/admin", id: "dashboard" },
-        ],
-      },
-      {
-        heading: "Authority Portals",
-        items: [
-          { label: "ZAQA", icon: "scale", href: "/zaqa/dashboard", id: "zaqa" },
-          { label: "HEA", icon: "bank", href: "/hea/dashboard", id: "hea" },
-          { label: "TEVETA", icon: "award", href: "/teveta/dashboard", id: "teveta" },
-          { label: "ECZ", icon: "clipboardCheck", href: "/ecz/dashboard", id: "ecz" },
+          { label: "System Activity", icon: "audit", href: "/admin/activity", id: "activity" },
         ],
       },
       {

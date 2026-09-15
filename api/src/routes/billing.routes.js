@@ -24,8 +24,21 @@ const FEE_SCHEDULE = [
   { code: "secondary", qualification: "G12 / G7 / G9, Form 4 and Form 6", amount: 50 },
 ];
 
-// Roles that may raise bills: ZAQA/admin (national), institutions (on behalf of ZAQA).
-const BILLER_ROLES = [ROLES.ZAQA, ROLES.ADMIN, ROLES.ISSUER];
+// Roles that may raise bills. Billing is two-way around an institution: ZAQA bills it for
+// national validation, its sector regulator (HEA / TEVETA / ECZ) bills it for registration,
+// accreditation and compliance, and the institution itself bills graduates for fees it
+// collects on ZAQA's behalf. ECZ also bills learners directly as a secondary-sector issuer.
+const BILLER_ROLES = [ROLES.ZAQA, ROLES.ADMIN, ROLES.ISSUER, ROLES.HEA, ROLES.TEVETA, ROLES.ECZ];
+const NATIONAL_ROLES = [ROLES.ZAQA, ROLES.ADMIN];
+const REGULATOR_ROLES = [ROLES.HEA, ROLES.TEVETA, ROLES.ECZ];
+const ORG_BY_ROLE = { [ROLES.ZAQA]: "ZAQA", [ROLES.ADMIN]: "ZAQA", [ROLES.HEA]: "HEA", [ROLES.TEVETA]: "TEVETA", [ROLES.ECZ]: "ECZ" };
+
+/** Mongo filter selecting the invoices this biller's organisation raised. */
+function issuedFilter(user) {
+  if (user.role === ROLES.ISSUER) return { issuerRef: user.issuerId };
+  if (REGULATOR_ROLES.includes(user.role)) return { issuedByRole: user.role };
+  return { issuedByRole: { $in: NATIONAL_ROLES } }; // ZAQA / admin: the national ledger
+}
 
 function invoiceView(i) {
   return {
@@ -53,19 +66,20 @@ function receiptView(r) {
   };
 }
 
-/** The organisation name a biller acts for (ZAQA, or their institution). */
+/** The organisation name a biller acts for (ZAQA, a regulator, or their institution). */
 async function billerOrg(user) {
   if (user.role === ROLES.ISSUER) {
     const issuer = await Issuer.findById(user.issuerId).select("institution").lean();
     return issuer?.institution || "Institution";
   }
-  return "ZAQA";
+  return ORG_BY_ROLE[user.role] || "ZAQA";
 }
 
 /** Whether this user is the biller side of an invoice (may confirm payments / cancel). */
 function isBiller(user, invoice) {
   if (user.role === ROLES.ADMIN) return true;
-  if (user.role === ROLES.ZAQA) return invoice.issuedByRole !== ROLES.ISSUER || invoice.issuedByEmail === user.email;
+  if (user.role === ROLES.ZAQA) return NATIONAL_ROLES.includes(invoice.issuedByRole);
+  if (REGULATOR_ROLES.includes(user.role)) return invoice.issuedByRole === user.role;
   if (user.role === ROLES.ISSUER) return String(invoice.issuerRef || "") === String(user.issuerId || "");
   return false;
 }
@@ -99,6 +113,18 @@ router.post("/invoices", requireAuth, requireRole(...BILLER_ROLES), validate(cre
     // Institutions collect from graduates on behalf of ZAQA; they do not bill other institutions.
     if (req.user.role === ROLES.ISSUER && target.role !== ROLES.HOLDER) {
       return res.status(403).json({ error: "Institutions can only bill graduates (fees collected on behalf of ZAQA)." });
+    }
+    // Sector regulators bill the institutions they regulate (registration, accreditation,
+    // compliance). ECZ may also bill learners directly, as it issues secondary certificates.
+    if ([ROLES.HEA, ROLES.TEVETA].includes(req.user.role) && target.role !== ROLES.ISSUER) {
+      return res.status(403).json({ error: `${ORG_BY_ROLE[req.user.role]} bills institutions only.` });
+    }
+    if (target.role === ROLES.ISSUER && REGULATOR_ROLES.includes(req.user.role)) {
+      const sectorOf = { [ROLES.HEA]: "higher_ed", [ROLES.TEVETA]: "tevet", [ROLES.ECZ]: "secondary" };
+      const inst = target.issuer ? await Issuer.findById(target.issuer).select("sector institution").lean() : null;
+      if (inst && (inst.sector || "higher_ed") !== sectorOf[req.user.role]) {
+        return res.status(403).json({ error: `${inst.institution} is not regulated by ${ORG_BY_ROLE[req.user.role]}.` });
+      }
     }
     const total = req.body.lines.reduce((s, l) => s + (l.qty || 1) * l.unitAmount, 0);
     const inv = await Invoice.create({
@@ -135,10 +161,7 @@ router.get("/invoices/mine", requireAuth, async (req, res, next) => {
 // GET /api/billing/invoices/issued — invoices & quotations my side raised.
 router.get("/invoices/issued", requireAuth, requireRole(...BILLER_ROLES), async (req, res, next) => {
   try {
-    const filter = req.user.role === ROLES.ISSUER
-      ? { issuerRef: req.user.issuerId }
-      : { issuedByRole: { $ne: ROLES.ISSUER } }; // ZAQA/admin see national invoices
-    const rows = await Invoice.find(filter).sort({ createdAt: -1 }).limit(300).lean();
+    const rows = await Invoice.find(issuedFilter(req.user)).sort({ createdAt: -1 }).limit(300).lean();
     res.json({ invoices: rows.map(invoiceView) });
   } catch (err) { next(err); }
 });
@@ -205,7 +228,9 @@ router.post("/invoices/:id/pay", requireAuth, validate(paySchema), async (req, r
       declaredByEmail: req.user.email,
     });
     if (inv.issuedByEmail) await notifyEmail(inv.issuedByEmail, `Payment ${p.number} declared for invoice ${inv.number} (K${p.amount}) — please confirm.`);
-    if (inv.issuedByRole !== ROLES.ISSUER) await notifyRole("zaqa", `Payment ${p.number} declared for invoice ${inv.number} (K${p.amount}).`);
+    if (inv.issuedByRole !== ROLES.ISSUER) {
+      await notifyRole(inv.issuedByRole === ROLES.ADMIN ? "zaqa" : inv.issuedByRole, `Payment ${p.number} declared for invoice ${inv.number} (K${p.amount}).`);
+    }
     await logActivity(req, { action: "billing.payment.declare", entity: "payment", entityId: p.number, summary: `Declared payment ${p.number} for ${inv.number}` });
     res.status(201).json({ payment: paymentView(p) });
   } catch (err) { next(err); }
@@ -222,10 +247,7 @@ router.get("/payments/mine", requireAuth, async (req, res, next) => {
 // GET /api/billing/payments/received — payments on invoices my side raised.
 router.get("/payments/received", requireAuth, requireRole(...BILLER_ROLES), async (req, res, next) => {
   try {
-    const filter = req.user.role === ROLES.ISSUER
-      ? { issuerRef: req.user.issuerId }
-      : { issuedByRole: { $ne: ROLES.ISSUER } };
-    const invoices = await Invoice.find(filter).select("_id").lean();
+    const invoices = await Invoice.find(issuedFilter(req.user)).select("_id").lean();
     const rows = await Payment.find({ invoice: { $in: invoices.map((i) => i._id) } })
       .sort({ createdAt: -1 }).limit(300).lean();
     res.json({ payments: rows.map(paymentView) });
@@ -293,10 +315,7 @@ router.get("/receipts/mine", requireAuth, async (req, res, next) => {
 // GET /api/billing/receipts/issued — receipts my side issued.
 router.get("/receipts/issued", requireAuth, requireRole(...BILLER_ROLES), async (req, res, next) => {
   try {
-    const filter = req.user.role === ROLES.ISSUER
-      ? { issuerRef: req.user.issuerId }
-      : { issuedByRole: { $ne: ROLES.ISSUER } };
-    const invoices = await Invoice.find(filter).select("_id").lean();
+    const invoices = await Invoice.find(issuedFilter(req.user)).select("_id").lean();
     const rows = await Receipt.find({ invoice: { $in: invoices.map((i) => i._id) } })
       .sort({ createdAt: -1 }).limit(300).lean();
     res.json({ receipts: rows.map(receiptView) });
@@ -309,7 +328,9 @@ router.get("/receipts/:id/pdf", requireAuth, async (req, res, next) => {
     const r = await Receipt.findById(req.params.id).populate("invoice").lean();
     if (!r) return res.status(404).json({ error: "Receipt not found" });
     const allowed = r.paidByEmail === req.user.email
-      || [ROLES.ZAQA, ROLES.ADMIN].includes(req.user.role)
+      || req.user.role === ROLES.ADMIN
+      || (req.user.role === ROLES.ZAQA && NATIONAL_ROLES.includes(r.invoice?.issuedByRole))
+      || (REGULATOR_ROLES.includes(req.user.role) && r.invoice?.issuedByRole === req.user.role)
       || (req.user.role === ROLES.ISSUER && String(r.invoice?.issuerRef || "") === String(req.user.issuerId || ""));
     if (!allowed) return res.status(403).json({ error: "Not your receipt" });
     const pdf = await buildReceiptPDF(r);

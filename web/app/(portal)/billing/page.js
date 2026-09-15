@@ -13,7 +13,24 @@ import AutoShell from "../../../components/portal/AutoShell";
 
 import { Badge, SectionCard, StatusTabs } from "../../../components/portal/kit";
 
-const BILLERS = ["issuer", "zaqa", "admin"];
+const BILLERS = ["issuer", "zaqa", "admin", "hea", "teveta", "ecz"];
+// Who a biller acts for, and who they may bill. Billing is two-way around an institution:
+// ZAQA (validation) and its regulator (registration / accreditation / compliance) bill the
+// institution, and the institution bills its graduates for fees collected on ZAQA's behalf.
+const BILLER_INFO = {
+  issuer: { org: "my institution", payer: "graduates", payerHint: "graduate@example.com", presets: "zaqa" },
+  zaqa:   { org: "ZAQA", payer: "institutions and graduates", payerHint: "registrar@institution.edu.zm", presets: "zaqa" },
+  admin:  { org: "ZAQA", payer: "institutions and graduates", payerHint: "registrar@institution.edu.zm", presets: "zaqa" },
+  hea:    { org: "HEA", payer: "higher-education institutions", payerHint: "registrar@university.edu.zm", presets: "regulator" },
+  teveta: { org: "TEVETA", payer: "TEVET institutions", payerHint: "principal@college.edu.zm", presets: "regulator" },
+  ecz:    { org: "ECZ", payer: "schools and learners", payerHint: "school@example.com", presets: "regulator" },
+};
+const REGULATOR_PRESETS = [
+  { code: "registration", qualification: "Institution registration fee" },
+  { code: "accreditation", qualification: "Programme accreditation fee" },
+  { code: "compliance", qualification: "Annual compliance / licence fee" },
+  { code: "inspection", qualification: "Inspection / audit fee" },
+];
 const money = (n) => `K${Number(n || 0).toLocaleString()}`;
 const when = (d) => new Date(d).toLocaleDateString();
 
@@ -39,17 +56,25 @@ function TableShell({ children, minWidth, empty, showEmpty }) {
 }
 
 // ---- raise an invoice / quotation (billers) ---------------------------------
-function CreateInvoice({ onCreated }) {
+function CreateInvoice({ user, onCreated }) {
+  const info = BILLER_INFO[user.role] || BILLER_INFO.zaqa;
   const [fees, setFees] = useState([]);
   const [form, setForm] = useState({ kind: "invoice", billedToEmail: "", description: "", amount: "" });
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { api.feeSchedule().then((d) => setFees(d.fees)).catch(() => {}); }, []);
+  useEffect(() => {
+    if (info.presets === "zaqa") api.feeSchedule().then((d) => setFees(d.fees)).catch(() => {});
+    else setFees(REGULATOR_PRESETS);
+  }, [info.presets]);
 
   function preset(f) {
-    setForm((s) => ({ ...s, description: `Qualification validation fee — ${f.qualification}`, amount: String(f.amount) }));
+    setForm((s) => ({
+      ...s,
+      description: f.amount != null ? `Qualification validation fee — ${f.qualification}` : f.qualification,
+      amount: f.amount != null ? String(f.amount) : s.amount,
+    }));
   }
 
   async function submit(e) {
@@ -72,14 +97,16 @@ function CreateInvoice({ onCreated }) {
     <SectionCard title="Raise an invoice or quotation">
       <form onSubmit={submit} className="space-y-3">
         <p className="text-xs text-slate-400">
-          Validation fees are collected from graduates on behalf of ZAQA per the published fee schedule.
+          {info.presets === "zaqa"
+            ? `Bills ${info.payer}. Validation fees follow the published ZAQA fee schedule.`
+            : `${info.org} bills ${info.payer} for registration, accreditation and compliance. Pick a fee type or describe your own.`}
         </p>
         {fees.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {fees.map((f) => (
               <button key={f.code} type="button" onClick={() => preset(f)}
                 className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12.5px] font-medium text-slate-600 transition hover:bg-slate-50">
-                {f.qualification} — {money(f.amount)}
+                {f.qualification}{f.amount != null ? ` — ${money(f.amount)}` : ""}
               </button>
             ))}
           </div>
@@ -93,17 +120,37 @@ function CreateInvoice({ onCreated }) {
             </select>
           </label>
           <Field label="Billed to (account email)" type="email" required value={form.billedToEmail}
-            onChange={(e) => setForm({ ...form, billedToEmail: e.target.value })} placeholder="graduate@example.com" />
+            onChange={(e) => setForm({ ...form, billedToEmail: e.target.value })} placeholder={info.payerHint}
+            hint={`The ${info.payer === "graduates" ? "graduate's" : "officer's"} login email on BBACVS.`} />
           <Field label="Description" required value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Qualification validation fee — Degree" />
+            onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={info.presets === "zaqa" ? "Qualification validation fee — Degree" : "Programme accreditation fee — Diploma in ICT"} />
           <Field label="Amount (ZMW)" type="number" min="0" step="0.01" required value={form.amount}
-            onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="500" />
+            onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder={info.presets === "zaqa" ? "500" : "0.00"} />
         </div>
         {msg && <Alert kind="success">{msg}</Alert>}
         {err && <Alert>{err}</Alert>}
         <Button type="submit" loading={busy}>Raise {form.kind}</Button>
       </form>
     </SectionCard>
+  );
+}
+
+// Institutions are billed from two directions (ZAQA for validation, their regulator for
+// accreditation / compliance) — show what is still owed to each before the list.
+function OutstandingByBiller({ rows }) {
+  const open = rows.filter((i) => i.kind === "invoice" && i.status === "issued");
+  const byOrg = {};
+  for (const i of open) byOrg[i.issuedByOrg || "Other"] = (byOrg[i.issuedByOrg || "Other"] || 0) + Number(i.total || 0);
+  const orgs = Object.keys(byOrg);
+  if (!orgs.length) return <p className="mb-3 text-xs text-slate-400">No unpaid invoices from ZAQA or your regulator.</p>;
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {orgs.map((o) => (
+        <span key={o} className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12.5px] text-amber-900">
+          <span className="font-semibold">{o}</span> outstanding {money(byOrg[o])}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -186,13 +233,17 @@ function InvoicesTab({ user, reloadKey, onChanged }) {
   return (
     <div className="space-y-6">
       {err && <Alert>{err}</Alert>}
-      {isBiller && <CreateInvoice onCreated={() => { load(); onChanged(); }} />}
-      <SectionCard title="Billed to me" action={<Badge tone="slate">{mine.length}</Badge>}>
+      {isBiller && <CreateInvoice user={user} onCreated={() => { load(); onChanged(); }} />}
+      <SectionCard
+        title={user.role === "issuer" ? "Billed to my institution" : "Billed to me"}
+        action={<Badge tone="slate">{mine.length}</Badge>}
+      >
+        {user.role === "issuer" && <OutstandingByBiller rows={mine} />}
         <Table rows={mine} own />
       </SectionCard>
       {isBiller && (
         <SectionCard
-          title={`Raised by ${user.role === "issuer" ? "my institution" : "ZAQA"}`}
+          title={`Raised by ${(BILLER_INFO[user.role] || BILLER_INFO.zaqa).org}`}
           action={<Badge tone="slate">{issued.length}</Badge>}
         >
           <Table rows={issued} own={false} />
@@ -285,7 +336,7 @@ function PaymentsTab({ user, reloadKey, onChanged }) {
         <Table rows={mine} actions={false} />
       </SectionCard>
       {isBiller && (
-        <SectionCard title="Payments awaiting my confirmation" action={<Badge tone="slate">{received.length}</Badge>}>
+        <SectionCard title={`Payments awaiting confirmation by ${(BILLER_INFO[user.role] || BILLER_INFO.zaqa).org}`} action={<Badge tone="slate">{received.length}</Badge>}>
           <p className="mb-3 text-xs text-slate-400">Confirming a payment marks the invoice paid and issues the official receipt.</p>
           <Table rows={received} actions />
         </SectionCard>
@@ -357,7 +408,7 @@ function ReceiptsTab({ user, reloadKey }) {
       </SectionCard>
       {isBiller && (
         <SectionCard
-          title={`Receipts issued by ${user.role === "issuer" ? "my institution" : "ZAQA"}`}
+          title={`Receipts issued by ${(BILLER_INFO[user.role] || BILLER_INFO.zaqa).org}`}
           action={<Badge tone="slate">{issued.length}</Badge>}
         >
           <Table rows={issued} />
@@ -392,7 +443,13 @@ export default function BillingPage() {
     <AutoShell
       active="billing"
       title="Billing"
-      subtitle="Invoices & quotations, payments and receipts — validation fees per the published ZAQA fee schedule."
+      subtitle={
+        user.role === "issuer"
+          ? "What ZAQA and your regulator bill your institution, and the validation fees you collect from graduates on ZAQA's behalf."
+          : BILLERS.includes(user.role) && user.role !== "zaqa" && user.role !== "admin"
+            ? `Invoices, quotations, payments and receipts for fees ${(BILLER_INFO[user.role] || {}).org} charges the institutions it regulates.`
+            : "Invoices & quotations, payments and receipts — validation fees per the published ZAQA fee schedule."
+      }
     >
       <div className="mb-5">
         <StatusTabs tabs={TABS} active={TABS.find((t) => t.id === tab)?.label} onChange={(label) => setTab(TABS.find((t) => t.label === label)?.id || "invoices")} />

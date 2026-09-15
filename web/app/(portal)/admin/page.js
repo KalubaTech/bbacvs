@@ -7,7 +7,7 @@ import { getToken, getUser } from "../../../lib/auth";
 import { Button, Field, Alert } from "../../../components/ui";
 import AutoShell from "../../../components/portal/AutoShell";
 
-import { TeamCard, ActivityCard } from "../../../components/manage";
+import { TeamCard } from "../../../components/manage";
 import { Badge, StatCard, StatRow, SectionCard, Avatar } from "../../../components/portal/kit";
 
 export default function AdminPage() {
@@ -45,7 +45,7 @@ export default function AdminPage() {
   const onChainCount = issuers.filter((i) => i.onChain).length;
 
   return (
-    <AutoShell active="dashboard" title="Platform administration" subtitle="Register issuing institutions, manage authority accounts and review system activity.">
+    <AutoShell active="dashboard" title="Platform administration" subtitle="Register issuing institutions and manage authority accounts.">
 
       <StatRow cols={3}>
         <StatCard icon="bank" iconTone="softblue" label="Registered institutions" value={issuers.length} />
@@ -102,9 +102,8 @@ export default function AdminPage() {
         </SectionCard>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6">
         <TeamCard />
-        <ActivityCard title="System activity — who changed what" />
       </div>
     </AutoShell>
   );
