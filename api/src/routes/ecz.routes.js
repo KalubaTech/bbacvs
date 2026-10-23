@@ -7,7 +7,7 @@ import Joi from "joi";
 import { validate } from "../middleware/security.js";
 import { requireAuth, requireRole, ROLES } from "../middleware/auth.js";
 import { Issuer, CredentialIndex } from "../models/index.js";
-import { authorizeIssuerOnChain } from "../services/issuerRegistration.service.js";
+import { authorizeIssuerOnChain, AWAITING_COSIGN_WARNING } from "../services/issuerRegistration.service.js";
 import { fetchByCid } from "../services/ipfs.service.js";
 import { logActivity } from "../services/activity.service.js";
 import { pushEvent } from "../services/history.service.js";
@@ -56,7 +56,10 @@ router.post("/institutions/:id/approve", ...eczOnly, async (req, res, next) => {
     await issuer.save();
     await logActivity(req, { action: "ecz.approve", entity: "institution", entityId: String(issuer._id), summary: `Approved institution ${issuer.institution}` });
     if (!issuer.onChain) {
-      try { await authorizeIssuerOnChain(issuer); }
+      try {
+        const onchain = await authorizeIssuerOnChain(issuer);
+        if (onchain.pending) return res.status(200).json({ institution: issuerView(issuer), warning: AWAITING_COSIGN_WARNING });
+      }
       catch (e) { return res.status(200).json({ institution: issuerView(issuer), warning: `Approved, but on-chain authorisation is pending: ${e.message}` }); }
     }
     res.json({ institution: issuerView(issuer) });

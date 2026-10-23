@@ -7,7 +7,7 @@ import Joi from "joi";
 import { validate } from "../middleware/security.js";
 import { requireAuth, requireRole, ROLES } from "../middleware/auth.js";
 import { Issuer, CredentialIndex } from "../models/index.js";
-import { registerInstitution, authorizeIssuerOnChain } from "../services/issuerRegistration.service.js";
+import { registerInstitution, authorizeIssuerOnChain, AWAITING_COSIGN_WARNING } from "../services/issuerRegistration.service.js";
 import { fetchByCid } from "../services/ipfs.service.js";
 import { buildAccreditationCertificate } from "../services/accreditationCert.service.js";
 import { notifyIssuerOfficers } from "../services/notify.service.js";
@@ -188,7 +188,10 @@ router.post("/institutions/:id/approve", ...tevetaOnly, async (req, res, next) =
     await logActivity(req, { action: "teveta.approve", entity: "institution", entityId: String(issuer._id), summary: `Approved institution ${issuer.institution}` });
     // Authorise on-chain if not already (self-registered institutions arrive un-authorised).
     if (!issuer.onChain) {
-      try { await authorizeIssuerOnChain(issuer); }
+      try {
+        const onchain = await authorizeIssuerOnChain(issuer);
+        if (onchain.pending) return res.status(200).json({ institution: issuerView(issuer), warning: AWAITING_COSIGN_WARNING });
+      }
       catch (e) { return res.status(200).json({ institution: issuerView(issuer), warning: `Approved, but on-chain authorisation is pending: ${e.message}` }); }
     }
     await notifyIssuerOfficers(issuer._id, `Your institution ${issuer.institution} has been accredited by TEVETA. You can now issue credentials and download your accreditation certificate.`);

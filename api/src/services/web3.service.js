@@ -18,7 +18,14 @@ const GOVERNANCE_SAFE_ABI = [
   "function proposeTransaction(address to, uint256 value, bytes data) returns (uint256)",
   "function confirmTransaction(uint256 txId)",
   "function transactionCount() view returns (uint256)",
+  "function transactions(uint256) view returns (address to, uint256 value, bytes data, bool executed, uint256 confirmations)",
+  "function confirmed(uint256, address) view returns (bool)",
+  "function owners(uint256) view returns (address)",
+  "function threshold() view returns (uint256)",
+  "event TransactionProposed(uint256 indexed txId, address indexed proposer, address to)",
 ];
+// GovernanceSafe owners in constructor order (scripts/deploy.js): [ZAQA, ECZ, HEA].
+export const SAFE_OWNER_LABELS = ["ZAQA", "ECZ", "HEA"];
 const REVOCATION_REGISTRY_ABI = [
   "function revoke(bytes32 credentialHash, uint8 code)",
   "function reissue(bytes32 oldHash, bytes32 newHash)",
@@ -29,7 +36,9 @@ export const STATUS = ["NOT_FOUND", "VERIFIED", "REVOKED", "UNKNOWN_ISSUER"];
 
 let provider = null;
 export function getProvider() {
-  if (!provider) provider = new ethers.JsonRpcProvider(config.chain.rpcUrl);
+  // cacheTimeout -1: no response caching. The funder and the governance proposer can be the
+  // same key, and a nonce cached from the funding tx made the next tx fail ("nonce too low").
+  if (!provider) provider = new ethers.JsonRpcProvider(config.chain.rpcUrl, undefined, { cacheTimeout: -1 });
   return provider;
 }
 
@@ -71,42 +80,93 @@ export async function verifyOnChain(credentialHash) {
 }
 
 // ---- issuer registration via 2-of-3 GovernanceSafe -------------------------
+// Two custody modes (config.governance.cosignMode, D09):
+//   server   — prototype: the API holds two owner keys and proposes + confirms itself, so one
+//              operator effectively controls the "2-of-3" approval.
+//   external — the API holds only the proposer key (ZAQA). The grant executes only after a
+//              second regulator (ECZ or HEA) confirms from a key the API never sees (MetaMask in
+//              the governance portal page, or contracts/scripts/cosign.js).
+
+/** Fund a new issuer with a little gas so it can anchor credentials later. */
+async function fundIssuer(funder, issuerAddress) {
+  if ((await getProvider().getBalance(issuerAddress)) < ethers.parseEther("0.003")) {
+    await (await funder.sendTransaction({ to: issuerAddress, value: ethers.parseEther("0.006"), ...withGas(21000) })).wait();
+  }
+}
+
+/** Calldata for IssuerRegistry.grantIssuerRole(issuer, keccak(did), institution). */
+function grantCalldata(issuerAddress, didString, institution) {
+  return new ethers.Interface(ISSUER_REGISTRY_ABI).encodeFunctionData("grantIssuerRole", [
+    issuerAddress, ethers.keccak256(ethers.toUtf8Bytes(didString)), toBytes32Str(institution),
+  ]);
+}
+
+/**
+ * Propose grantIssuerRole through the GovernanceSafe as signer 1 (ZAQA). The proposal carries
+ * the proposer's confirmation; it executes once one more owner confirms.
+ * @returns {{ safeTxId: number, txHash: string }}
+ */
+export async function proposeIssuerGrant(issuerAddress, didString, institution) {
+  if (!config.governance.signer1) throw new Error("Governance proposer key not configured");
+  const s1 = new ethers.Wallet(config.governance.signer1, getProvider());
+  const funder = new ethers.Wallet(config.governance.funder || config.governance.signer1, getProvider());
+  await fundIssuer(funder, issuerAddress);
+
+  const safe = new ethers.Contract(config.chain.governanceSafe, GOVERNANCE_SAFE_ABI, s1);
+  const args = [config.chain.issuerRegistry, 0, grantCalldata(issuerAddress, didString, institution)];
+  const receipt = await (await safe.proposeTransaction(...args, await gasFor(safe.proposeTransaction, args, 600000))).wait();
+  // The id comes from the TransactionProposed event, not a pre-read counter (no race).
+  const event = receipt.logs.map((l) => { try { return safe.interface.parseLog(l); } catch { return null; } })
+    .find((e) => e?.name === "TransactionProposed");
+  if (!event) throw new Error("GovernanceSafe proposal emitted no TransactionProposed event");
+  return { safeTxId: Number(event.args.txId), txHash: receipt.hash };
+}
+
+/** Server-custody mode only: confirm (and thereby execute) a proposal with signer 2. */
+async function confirmAsSigner2(safeTxId) {
+  if (!config.governance.signer2) throw new Error("Second governance key not configured");
+  const s2 = new ethers.Wallet(config.governance.signer2, getProvider());
+  const funder = new ethers.Wallet(config.governance.funder || config.governance.signer1, getProvider());
+  if ((await getProvider().getBalance(s2.address)) < ethers.parseEther("0.0006")) {
+    await (await funder.sendTransaction({ to: s2.address, value: ethers.parseEther("0.001"), ...withGas(21000) })).wait();
+  }
+  const safe = new ethers.Contract(config.chain.governanceSafe, GOVERNANCE_SAFE_ABI, s2);
+  return (await safe.confirmTransaction(safeTxId, await gasFor(safe.confirmTransaction, [safeTxId], 800000))).wait();
+}
+
+/** Server-custody mode: propose as signer 1 and confirm as signer 2 (executes at threshold 2). */
 export async function registerIssuerOnChain(issuerAddress, didString, institution) {
   if (!config.governance.signer1 || !config.governance.signer2) {
     throw new Error("Governance signer keys not configured");
   }
-  const s1 = new ethers.Wallet(config.governance.signer1, getProvider());
-  const s2 = new ethers.Wallet(config.governance.signer2, getProvider());
-  const funder = new ethers.Wallet(config.governance.funder || config.governance.signer1, getProvider());
+  const { safeTxId } = await proposeIssuerGrant(issuerAddress, didString, institution);
+  const confirmReceipt = await confirmAsSigner2(safeTxId);
+  const authorised = await isIssuerAuthorised(issuerAddress);
+  return { txHash: confirmReceipt.hash, authorised, safeTxId };
+}
 
-  // Fund the new issuer with a little gas so it can anchor credentials later.
-  // Kept small — each anchor costs ~0.0002 ETH on Sepolia.
-  const bal = await getProvider().getBalance(issuerAddress);
-  if (bal < ethers.parseEther("0.003")) {
-    // Enough for several self-signed (MetaMask) anchoring transactions.
-    await (await funder.sendTransaction({ to: issuerAddress, value: ethers.parseEther("0.006"), ...withGas(21000) })).wait();
-  }
-  // Ensure signer2 has gas to confirm.
-  if ((await getProvider().getBalance(s2.address)) < ethers.parseEther("0.0006")) {
-    await (await funder.sendTransaction({ to: s2.address, value: ethers.parseEther("0.001"), ...withGas(21000) })).wait();
-  }
-
-  const issuerRegistry = new ethers.Contract(config.chain.issuerRegistry, ISSUER_REGISTRY_ABI, s1);
-  const did = ethers.keccak256(ethers.toUtf8Bytes(didString));
-  const data = issuerRegistry.interface.encodeFunctionData("grantIssuerRole", [
-    issuerAddress, did, toBytes32Str(institution),
-  ]);
-
-  const safe1 = new ethers.Contract(config.chain.governanceSafe, GOVERNANCE_SAFE_ABI, s1);
-  const safe2 = new ethers.Contract(config.chain.governanceSafe, GOVERNANCE_SAFE_ABI, s2);
-  const txId = await safe1.transactionCount();
-  const proposeArgs = [config.chain.issuerRegistry, 0, data];
-  await (await safe1.proposeTransaction(...proposeArgs, await gasFor(safe1.proposeTransaction, proposeArgs, 600000))).wait();
-  // Executes grantIssuerRole at threshold 2.
-  const confirmReceipt = await (await safe2.confirmTransaction(txId, await gasFor(safe2.confirmTransaction, [txId], 800000))).wait();
-
-  const authorised = await issuerRegistry.isAuthorised(issuerAddress);
-  return { txHash: confirmReceipt.hash, authorised };
+/**
+ * A GovernanceSafe proposal as recorded ON-CHAIN, with the owners who confirmed it and its
+ * calldata decoded (so co-signers see what they approve, not what the database says).
+ */
+export async function getSafeProposal(safeTxId) {
+  const safe = new ethers.Contract(config.chain.governanceSafe, GOVERNANCE_SAFE_ABI, getProvider());
+  const t = await safe.transactions(safeTxId);
+  const owners = await Promise.all(SAFE_OWNER_LABELS.map((_, i) => safe.owners(i)));
+  const confirmedBy = await Promise.all(owners.map(async (address, i) => ({
+    label: SAFE_OWNER_LABELS[i], address, confirmed: await safe.confirmed(safeTxId, address),
+  })));
+  let call = null;
+  try {
+    const parsed = new ethers.Interface(ISSUER_REGISTRY_ABI).parseTransaction({ data: t.data });
+    if (parsed?.name === "grantIssuerRole") {
+      call = { method: "grantIssuerRole", account: parsed.args[0], institution: ethers.decodeBytes32String(parsed.args[2]) };
+    }
+  } catch { /* not an issuer grant */ }
+  return {
+    safeTxId: Number(safeTxId), to: t.to, executed: t.executed, confirmations: Number(t.confirmations),
+    threshold: Number(await safe.threshold()), confirmedBy, call,
+  };
 }
 
 export async function isIssuerAuthorised(issuerAddress) {

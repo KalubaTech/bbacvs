@@ -6,7 +6,7 @@ import { User, Issuer } from "../models/index.js";
 import { hashPassword } from "../middleware/auth.js";
 import { encryptKey } from "./keystore.service.js";
 import { publicKeyFor } from "./signedQr.service.js";
-import { registerIssuerOnChain } from "./web3.service.js";
+import { requestIssuerAuthorisation } from "./governance.service.js";
 
 /**
  * Onboard an institution and create its officer login.
@@ -87,13 +87,14 @@ export async function registerInstitution({
 
 /**
  * Authorise an already-stored issuer on-chain via the 2-of-3 GovernanceSafe (also funds the
- * address with gas for MetaMask issuers). Idempotent-ish: safe to call once at approval time.
- * @returns {{ txHash, authorised }}
+ * address with gas). In external custody mode this only proposes; the grant executes when a
+ * second regulator co-signs (see governance.service.js).
+ * @returns {{ txHash?, authorised?, pending?, safeTxId? }}
  */
 export async function authorizeIssuerOnChain(issuer) {
-  const onchain = await registerIssuerOnChain(issuer.walletAddress, issuer.did, issuer.institution);
-  issuer.onChain = onchain.authorised;
-  issuer.registrationTx = onchain.txHash;
-  await issuer.save();
-  return onchain;
+  return requestIssuerAuthorisation(issuer);
 }
+
+/** Message for approval responses when the grant still needs a co-signature. */
+export const AWAITING_COSIGN_WARNING =
+  "Approved. On-chain authorisation has been proposed by ZAQA and awaits a second regulator's co-signature (Governance co-signing page).";

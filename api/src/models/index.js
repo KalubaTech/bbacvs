@@ -63,6 +63,15 @@ const issuerSchema = new mongoose.Schema(
     signingMode: { type: String, enum: ["server", "metamask"], default: "server" },
     onChain: { type: Boolean, default: false },
     registrationTx: { type: String },
+    // GovernanceSafe proposal for the on-chain grant when it awaits a second regulator's
+    // co-signature (external custody mode, D09).
+    governanceProposal: {
+      safeTxId: { type: Number },
+      proposeTx: { type: String },
+      proposedAt: { type: Date },
+      status: { type: String, enum: ["awaiting_cosign", "executed"] },
+      executedAt: { type: Date },
+    },
 
     // --- governance layer (app-layer, non-authoritative) --------------------
     // Which regulator oversees this issuer: HE institutions are regulated by the HEA,

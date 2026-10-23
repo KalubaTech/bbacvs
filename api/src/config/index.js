@@ -49,6 +49,10 @@ export const config = {
     signer1: process.env.GOV_SIGNER1_PRIVATE_KEY || "",
     signer2: process.env.GOV_SIGNER2_PRIVATE_KEY || "",
     funder: process.env.GOV_FUNDER_PRIVATE_KEY || "",
+    // D09 key custody: "server" = API holds two owner keys (prototype); "external" = API only
+    // proposes, a second regulator co-signs from its own wallet. Defaults to external when no
+    // second key is configured.
+    cosignMode: process.env.GOV_COSIGN_MODE || (process.env.GOV_SIGNER2_PRIVATE_KEY ? "server" : "external"),
   },
 
   // ZAQA authority key used to sign the QR on the national verification certificate.

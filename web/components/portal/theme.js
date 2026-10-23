@@ -58,6 +58,7 @@ export const PORTALS = {
         heading: "Administration",
         items: [
           { label: "User Management", icon: "users", href: "/zaqa/users", id: "users" },
+          { label: "Governance Proposals", icon: "shieldCheck", href: "/zaqa/governance", id: "governance" },
           { label: "Notifications", icon: "bell", href: "/zaqa/notifications", id: "notifications" },
           { label: "Settings", icon: "settings", href: "/account", id: "settings" },
         ],
@@ -111,6 +112,7 @@ export const PORTALS = {
         items: [
           { label: "Institutions & Accreditation", icon: "bank", href: "/hea/institutions", id: "institutions" },
           { label: "Users & Officers", icon: "users", href: "/hea/users", id: "users" },
+          { label: "Governance Co-signing", icon: "shieldCheck", href: "/hea/governance", id: "governance" },
           { label: "Billing & Invoices", icon: "file", href: "/billing", id: "billing" },
           { label: "Settings", icon: "settings", href: "/account", id: "settings" },
         ],
@@ -162,6 +164,7 @@ export const PORTALS = {
         items: [
           { label: "Learner Records", icon: "users", href: "/ecz/learners", id: "learners" },
           { label: "User Roles", icon: "user", href: "/ecz/users", id: "users" },
+          { label: "Governance Co-signing", icon: "shieldCheck", href: "/ecz/governance", id: "governance" },
           { label: "Billing & Invoices", icon: "file", href: "/billing", id: "billing" },
           { label: "Settings", icon: "settings", href: "/account", id: "settings" },
         ],

@@ -27,6 +27,7 @@ import nqfRoutes from "./routes/nqf.routes.js";
 import qualificationsRoutes from "./routes/qualifications.routes.js";
 import billingRoutes from "./routes/billing.routes.js";
 import recognitionRoutes from "./routes/recognition.routes.js";
+import governanceRoutes from "./routes/governance.routes.js";
 
 export function createApp() {
   const app = express();
@@ -70,6 +71,7 @@ export function createApp() {
   app.use("/api/nqf", nqfRoutes);
   app.use("/api/qualifications", qualificationsRoutes);
   app.use("/api/billing", billingRoutes);
+  app.use("/api/governance", governanceRoutes);
 
   app.use((_req, res) => res.status(404).json({ error: "Not found" }));
   app.use(errorHandler);

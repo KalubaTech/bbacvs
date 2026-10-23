@@ -322,6 +322,11 @@ export const api = {
 
   // verify (public)
   verifyOnline: (hash) => request(`/api/verify/${hash}`),
+  // GovernanceSafe co-signing (D09)
+  governanceConfig: (token) => request(`/api/governance/config`, { token }),
+  governanceProposals: (token) => request(`/api/governance/proposals`, { token }),
+  syncGovernanceProposal: (token, safeTxId) =>
+    request(`/api/governance/proposals/${safeTxId}/sync`, { token, method: "POST", body: "{}" }),
   // Scanned QR: the server checks the QR signature before trusting its credential reference.
   verifyQr: (payload) =>
     request(`/api/verify/qr`, { method: "POST", body: JSON.stringify({ payload }) }),
