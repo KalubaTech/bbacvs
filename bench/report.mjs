@@ -10,6 +10,11 @@ import path from "node:path";
 const dir = process.argv[2];
 if (!dir) throw new Error("usage: node bench/report.mjs <results dir>");
 const { mode, correctness, results } = JSON.parse(fs.readFileSync(path.join(dir, "summary.json"), "utf8"));
+// Runs recorded before `attemptsPerSec` existed stored attempts/s as throughput; convert to
+// successful answers/s (exact: succeeded × attempts/s ÷ requests).
+for (const r of results) {
+  if (r.attemptsPerSec === undefined) { r.attemptsPerSec = r.throughputPerSec; r.throughputPerSec = (r.throughputPerSec * r.succeeded) / r.requests; }
+}
 const env = JSON.parse(fs.readFileSync(path.join(dir, "environment.json"), "utf8"));
 
 // Fixed categorical order (validated: slots 1–3, all pairs, light + dark). Colour follows the system.
@@ -41,7 +46,7 @@ const METRICS = [
   // (stated on the axis); throughput stays linear.
   { key: "p50Ms", file: "chart-p50.svg", title: "Median latency (p50)", unit: "ms", log: true },
   { key: "p95Ms", file: "chart-p95.svg", title: "Tail latency (p95)", unit: "ms", log: true },
-  { key: "throughputPerSec", file: "chart-throughput.svg", title: "Throughput", unit: "req/s" },
+  { key: "throughputPerSec", file: "chart-throughput.svg", title: "Throughput (successful answers)", unit: "req/s" },
 ];
 
 // ---- SVG line chart (one measure, one axis) ----------------------------------------------------

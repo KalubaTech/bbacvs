@@ -1,0 +1,2 @@
+[db] connected: mongodb://127.0.0.1:27017/bbacvs_bench_258975
+BBACVS API listening on 127.0.0.1:4100 (production)

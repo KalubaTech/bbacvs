@@ -1,0 +1,94 @@
+{
+  "mode": "sepolia",
+  "startedAt": "2026-10-23T09-21-02-412Z",
+  "commit": "196fcbf130fb743e8db980742c69224a5c2ba573",
+  "dirty": false,
+  "node": "v20.20.2",
+  "mongo": "db version v8.0.26",
+  "hardhat": null,
+  "host": {
+    "cpu": "AMD EPYC Processor (with IBPB)",
+    "cores": 4,
+    "memGB": 7.8,
+    "loadavgAtEnd": [
+      0.9,
+      0.56,
+      0.83
+    ],
+    "platform": "Linux 6.8.0-147-generic"
+  },
+  "colocation": "Load generator, both servers, MongoDB on the same host (loopback). Production services kept running on the host.",
+  "plan": {
+    "levels": [
+      1,
+      2,
+      5
+    ],
+    "totalPerRun": 24,
+    "reps": 2,
+    "coldLevels": [
+      1,
+      4
+    ],
+    "coldTotal": 12,
+    "records": 12,
+    "ipfsDelayMs": "real Pinata gateway",
+    "rateLimit": "raised to 1e8/min on both systems"
+  },
+  "dependencies": {
+    "chain": "Ethereum Sepolia via SEPOLIA_RPC_URL",
+    "ipfs": "Pinata gateway"
+  },
+  "cost": {
+    "anchors": [
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365010,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      },
+      {
+        "gasUsed": 365022,
+        "effectiveGasPriceWei": "18"
+      }
+    ]
+  }
+}

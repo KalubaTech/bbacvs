@@ -47,8 +47,9 @@ BBACVS is measured in two cache conditions:
 4. Record every request's latency, HTTP status and verdict (`raw.csv`). A request counts as
    successful only when it returns HTTP 200 **and** the expected verdict. Failures are counted
    and kept, not dropped.
-5. Summarise each run (`summary.csv`/`summary.json`): mean, p50, p95, p99, max, throughput,
-   failed requests and error rate. Percentiles use nearest rank over successful requests.
+5. Summarise each run (`summary.csv`/`summary.json`): mean, p50, p95, p99, max, throughput
+   (successful answers per second; `attemptsPerSec` counts every request), failed requests and
+   error rate. Percentiles use nearest rank over successful requests.
 6. Write `environment.json`: commit, Node, MongoDB and Hardhat versions, host CPU and memory,
    co-location, the plan, dependencies, and the anchoring gas cost.
 

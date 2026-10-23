@@ -215,7 +215,9 @@ function summarise(samples, wallMs) {
   return {
     requests: samples.length, succeeded: ok.length, failed: samples.length - ok.length,
     errorRate: (samples.length - ok.length) / samples.length,
-    throughputPerSec: (samples.length / wallMs) * 1000,
+    // Successful answers per second: failures (e.g. instant connection errors) must not count.
+    throughputPerSec: (ok.length / wallMs) * 1000,
+    attemptsPerSec: (samples.length / wallMs) * 1000,
     meanMs: lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : null,
     p50Ms: pct(lat, 50), p95Ms: pct(lat, 95), p99Ms: pct(lat, 99), maxMs: lat.at(-1) ?? null,
   };

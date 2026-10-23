@@ -19,9 +19,9 @@ does not mean an independent party has audited the change.
 | D06 | **Resolved** (by design, offline cannot prove revocation) | `/api/verify/issuer-keys` returns `generatedAt`, `maxAgeSeconds` (7 days) and `source`, and leaves out suspended issuers. The web verifier stores those values, shows the cached-at time, age, expiry and provenance, and reports offline results as **"Signature valid (offline)"**, or **"cached keys expired"** after expiry, with an explicit statement that revocation is not checked. `/api/verify/offline` resolves the key from the registry and labels a caller-supplied key as untrusted. | Code: `web/lib/offline.js`, `web/app/(portal)/verify/page.js`. Not yet covered by an automated UI test. |
 | D07 | **Resolved** | `api/package.json` test script is now `node --test test/*.test.js`. | `04-d07-node-portability.txt`: on Node v22.23.4 the old command fails (0/1) and the new one passes 81/81. Node v20.20.2 passes both. |
 | D08 | **Resolved** | Issuance reservations are `IssuanceReservation` rows with a unique `key` and a TTL `expiresAt`. A stale reservation is taken over, and a late release cannot delete a newer owner's row. The duplicate check runs *after* the reservation is acquired. | `api/test/issuanceReservation.test.js`: 6 separate Node processes race for one reservation and exactly one wins. Uses a throwaway MongoDB database. |
-| D09 | **Open** (assurance gap) | No change. Both governance signer keys and the funder key are still in the single API environment (`api/.env`), so the platform's "2-of-3" approvals are executed by one operator. The report must not claim independent regulatory signatures. Required: separate custodians, a co-signing procedure outside the API, and documented recovery and rotation. | — |
+| D09 | **Mechanism in place; custody not yet split** | `GOV_COSIGN_MODE=external` makes the API only *propose* issuer grants as ZAQA. ECZ or HEA co-signs from its own wallet, either on the portal's Governance Co-signing page (MetaMask, which reads the call from the chain) or with `contracts/scripts/cosign.js`, and the API picks up the execution from the chain. Approval, recovery and rotation are documented in `docs/governance-key-custody.md`. **Production still runs `server` mode** (both keys in `api/.env`) until the ECZ/HEA keys are handed to their custodians, so the report must not yet claim independent regulatory signatures. | `api/test/governance.test.js`; rehearsal on an isolated chain (`08-d09-cosign-rehearsal.txt`): a non-owner is refused, nothing executes before the co-signature, and the grant executes after the ECZ co-signs. |
 | D10 | **Partly addressed** | VC proofs now sign canonical JSON (D04). The proof is still the project's own `EcdsaSecp256k1Signature2019`-style object, not a standard Data Integrity cryptosuite or JWT-VC. DID resolution and interoperability with an independent verifier have not been tested. | — |
-| D11 | **Open** (evaluation gap) | No centralised baseline or load study has been run. One incidental measurement: verification fetches the encrypted VC from the Pinata gateway, which took 3.6–7.3 s per credential on first fetch on 2026-10-23 and about 0.27 s once cached. This is not a controlled measurement and must not be reported as one. | — |
+| D11 | **Partly addressed** (controlled comparison done) | `bench/` compares BBACVS online verification with a centralised verifier doing the same task. There are two conditions: isolated (local chain and IPFS stand-in, 200 synthetic records, 1–50 clients, 3 repetitions) and real network (Sepolia RPC and the Pinata gateway, read-only, 1–5 clients). Results and threats to validity are below. Still missing for objective 3: open-arrival (rate-based) load, a run on dedicated hardware, and real-network runs at higher concurrency, which the public gateway does not allow. | `bench/results/isolated-2026-10-23T09-54-12-027Z/`, `bench/results/sepolia-2026-10-23T09-21-02-412Z/` (raw, summary, aggregate, environment, charts) |
 | D12 | **Open** | No participant study has been run. Claims about user acceptance, SUS scores or fraud reduction are not supported. | — |
 
 ## Additional finding during remediation
@@ -31,6 +31,58 @@ October the same call needed about 378,000 gas on Sepolia, and the API's fixed `
 made it revert. New issuance and revocation on the deployed system would therefore have failed
 regardless of the defects above. `web3.service.js` now estimates gas with 30% headroom and falls
 back to raised ceilings (`ae062eb`).
+
+**The online verifier could crash the API (found by the D11 benchmark, fixed in `2bed97c`).** The
+D02 integrity check raced the IPFS fetch against a 15 s timeout. When the timeout won, the
+fetch's later failure (the public Pinata gateway answering **429 rate limited**) was an unhandled
+promise rejection, and Node exited. In the Sepolia run this took the cache-off instance down
+mid-run (12 of 24 requests failed). It is fixed and covered by a regression test that fails
+without the fix. Separately, the public Pinata gateway started refusing at just 4 concurrent
+uncached verifications, so real-volume verification needs a dedicated IPFS gateway.
+
+## D11 results (verification latency and throughput)
+
+Median across repetitions; p50/p95 in ms; throughput = successful answers per second. All three
+systems gave identical verdicts on every record in both conditions (200/200 and 12/12).
+
+**Isolated condition** (local Hardhat chain, local IPFS stand-in, commit `2bed97c`, 3 reps × 300
+requests per point, 0 failures):
+
+| Clients | Baseline p50 / p95 | BBACVS warm p50 / p95 | BBACVS cache-off p50 / p95 | Throughput: baseline / warm / cache-off |
+|--:|--|--|--|--|
+| 1 | 24 / 39 | 46 / 68 | 48 / 65 | 39 / 20 / 20 |
+| 5 | 61 / 102 | 80 / 129 | 87 / 118 | 75 / 59 / 55 |
+| 10 | 113 / 172 | 142 / 199 | 157 / 212 | 84 / 67 / 62 |
+| 25 | 275 / 432 | 355 / 468 | 378 / 467 | 85 / 68 / 64 |
+| 50 | 527 / 1572 | 730 / 921 | 724 / 902 | 81 / 65 / 63 |
+
+**Real network** (Sepolia RPC + Pinata public gateway, 12 deployed credentials, commit `196fcbf`,
+2 reps):
+
+| Clients | Baseline p50 / p95 | BBACVS warm p50 / p95 | BBACVS cache-off p50 / p95 | Failed (cache-off) |
+|--:|--|--|--|--|
+| 1 | 28 / 45 | 152 / 235 | 4,726 / 7,262 | 0 / 24 |
+| 2 | 38 / 139 | 242 / 479 | — | — |
+| 4 | — | — | 5,326 / 7,495 | 12 / 24 (gateway 429 → API crash, since fixed) |
+| 5 | 80 / 128 | 250 / 353 | — | — |
+
+What the numbers support:
+
+* With the dependencies on the same machine, decentralised verification costs about **+20 ms
+  per request** at one client (46 vs 24 ms) and saturates at about **20% lower throughput**
+  (about 65–68 vs about 85 answers/s). That cost is cryptography and the extra look-ups, not the
+  network.
+* On the real network the chain read dominates: **about 150 ms vs about 28 ms** at one client.
+  An **uncached** verification is dominated by the public IPFS gateway: **about 4.7 s median,
+  about 7.3 s p95**. The CID cache is therefore what makes the system usable. The first
+  verification of a credential after a restart is slow, and the public gateway rate-limits.
+* Anchoring cost on Sepolia: **365,010–365,022 gas per credential** (12 re-anchors on
+  2026-10-23). The testnet gas price was 18 wei, so testnet ETH cost is meaningless. Mainnet cost
+  = gas × the gas price at the time.
+* Threats to validity: one shared host that also runs production services, a closed-loop load
+  model, a small real-network sample, a single day, and the baseline is the project's own model
+  of a centralised verifier. The isolated condition is optimistic for BBACVS. See
+  `bench/README.md`.
 
 ## Contract change and migration (D01)
 
@@ -54,6 +106,6 @@ back to raised ceilings (`ae062eb`).
 - [x] Contract and API results, including the cross-issuer abuse test and the QR tamper test (`01`, `02`, `05`).
 - [x] Synthetic negative-path traces that separate tampering from unavailability, unknown issuer and revocation (`integrity.test.js`, `verificationStatus.test.js`, `05`).
 - [ ] Synthetic end-to-end run on a test network covering issue → pin → anchor → public verify → suspend → revoke → correct. The production lifecycle was exercised through the migration, but no full scripted synthetic run has been recorded.
-- [ ] Comparative latency/scalability datasets (D11).
+- [x] Comparative latency/scalability datasets with identical task definitions, failures included (D11; see results below). Open-arrival load and dedicated-hardware runs are not done.
 - [ ] User-study ethics approval and data (D12).
 - [ ] Report updates (Stage 8): figure placement and captions, final PDF review.

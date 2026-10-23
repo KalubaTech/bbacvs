@@ -1,0 +1,17 @@
+system,label,concurrency,rep,requests,succeeded,failed,errorRate,throughputPerSec,meanMs,p50Ms,p95Ms,p99Ms,maxMs
+bbacvs_warm,BBACVS (IPFS cache warm),1,1,24,24,0,0,5.71,175.122,155.986,237.554,237.91,237.91
+bbacvs_cold,BBACVS (IPFS cache off),1,1,12,12,0,0,0.189,5279.337,4631.044,7360.169,7360.169,7360.169
+baseline,Centralised baseline,1,1,24,24,0,0,32.132,31.115,29.733,51.22,53.171,53.171
+bbacvs_cold,BBACVS (IPFS cache off),1,2,12,12,0,0,0.198,5062.52,4821.537,7163.474,7163.474,7163.474
+baseline,Centralised baseline,1,2,24,24,0,0,35.189,28.413,27.195,39.033,48.668,48.668
+bbacvs_warm,BBACVS (IPFS cache warm),1,2,24,24,0,0,6.103,163.862,148.078,233.313,239.76,239.76
+bbacvs_warm,BBACVS (IPFS cache warm),2,1,24,24,0,0,6.094,319.943,293.827,622.469,640.403,640.403
+baseline,Centralised baseline,2,1,24,24,0,0,31.708,62.812,38.623,226.608,227.197,227.197
+baseline,Centralised baseline,2,2,24,24,0,0,54.782,35.92,36.627,51.186,54.658,54.658
+bbacvs_warm,BBACVS (IPFS cache warm),2,2,24,24,0,0,9.071,214.53,189.265,334.699,463.227,463.227
+bbacvs_cold,BBACVS (IPFS cache off),4,1,12,12,0,0,0.607,5473.601,5326.337,7495.475,7495.475,7495.475
+bbacvs_cold,BBACVS (IPFS cache off),4,2,12,0,12,1,452.321,,,,,
+bbacvs_warm,BBACVS (IPFS cache warm),5,1,24,24,0,0,17.391,281.602,288.362,453.273,472.075,472.075
+baseline,Centralised baseline,5,1,24,24,0,0,49.116,92.856,87.083,140.26,141.016,141.016
+baseline,Centralised baseline,5,2,24,24,0,0,60.132,78.281,73.236,116.72,116.993,116.993
+bbacvs_warm,BBACVS (IPFS cache warm),5,2,24,24,0,0,21.924,210.97,210.857,253.114,263.175,263.175
