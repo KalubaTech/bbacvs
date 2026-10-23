@@ -65,10 +65,25 @@ Deployed addresses (also in `deployments.sepolia.json`):
 |----------|---------|
 | GovernanceSafe | `0x39aea70a718B5a77710aE0a40B4d79fcE18Ef990` |
 | IssuerRegistry | `0x99B41d97B29E85831591a2fb0f5ce5132BFb73ED` |
-| RevocationRegistry | `0xB23E0922Bd655FbC4CE17d1236120e5685918263` |
-| CredentialRegistry | `0x785c52048cf543fd7907986BB77170345059B8D2` |
+| RevocationRegistry | `0xc95Ad263e021ED2EF226B9D2C40523E3ADdBB840` (issuer-scoped, since 2026-10-23) |
+| CredentialRegistry | `0xC57BE34bcd4BdF382dB21fF9336bE7a4cc7a182f` (since 2026-10-23) |
 
 These addresses are wired into `api/.env` (`*_REGISTRY_ADDRESS`, `GOVERNANCE_SAFE_ADDRESS`).
+
+Retired on 2026-10-23 (defect D01 — revocation was not bound to the credential's recorded
+issuer): RevocationRegistry `0xB23E0922Bd655FbC4CE17d1236120e5685918263`, CredentialRegistry
+`0x785c52048cf543fd7907986BB77170345059B8D2`. Credentials anchored there were re-anchored on the
+new pair by `api/scripts/migrate-lifecycle.js`; each keeps its old anchor tx in `legacyAnchorTx`.
+
+To redeploy only the lifecycle contracts (keeping the GovernanceSafe and issuer authorisations):
+
+```bash
+cd contracts && npx hardhat run scripts/redeploy-lifecycle.js --network sepolia
+# set CREDENTIAL_REGISTRY_ADDRESS / REVOCATION_REGISTRY_ADDRESS in api/.env, then
+cd ../api && node scripts/migrate-lifecycle.js          # dry run
+node scripts/migrate-lifecycle.js --apply               # re-anchor + replay revocations
+systemctl restart bbacvs-api.service
+```
 
 ## First-time bring-up (from scratch)
 

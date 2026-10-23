@@ -33,10 +33,21 @@ export function getProvider() {
   return provider;
 }
 
-// Set an explicit gasLimit only: this skips the estimateGas pre-flight (which can fail
-// when accounts are low on ETH) while letting ethers pick fees from live network
-// conditions, so transactions are always priced to actually get mined.
+// Set an explicit gasLimit (fees are left to ethers, priced from live network conditions so
+// transactions actually get mined).
 const withGas = (gasLimit) => ({ gasLimit });
+
+// Contract calls: estimate + 30% headroom, falling back to a fixed ceiling when estimation
+// fails (e.g. a low-balance account). Fixed limits alone broke issuance once Sepolia repriced
+// storage access — an anchor went from ~107k gas (Sept 2026) to ~378k (Oct 2026).
+async function gasFor(method, args, fallback) {
+  try {
+    const estimate = await method.estimateGas(...args);
+    return withGas((estimate * 13n) / 10n);
+  } catch {
+    return withGas(fallback);
+  }
+}
 
 function credReg(signerOrProvider) {
   return new ethers.Contract(config.chain.credentialRegistry, CREDENTIAL_REGISTRY_ABI, signerOrProvider);
@@ -89,8 +100,10 @@ export async function registerIssuerOnChain(issuerAddress, didString, institutio
   const safe1 = new ethers.Contract(config.chain.governanceSafe, GOVERNANCE_SAFE_ABI, s1);
   const safe2 = new ethers.Contract(config.chain.governanceSafe, GOVERNANCE_SAFE_ABI, s2);
   const txId = await safe1.transactionCount();
-  await (await safe1.proposeTransaction(config.chain.issuerRegistry, 0, data, withGas(280000))).wait();
-  const confirmReceipt = await (await safe2.confirmTransaction(txId, withGas(280000))).wait(); // executes at threshold 2
+  const proposeArgs = [config.chain.issuerRegistry, 0, data];
+  await (await safe1.proposeTransaction(...proposeArgs, await gasFor(safe1.proposeTransaction, proposeArgs, 600000))).wait();
+  // Executes grantIssuerRole at threshold 2.
+  const confirmReceipt = await (await safe2.confirmTransaction(txId, await gasFor(safe2.confirmTransaction, [txId], 800000))).wait();
 
   const authorised = await issuerRegistry.isAuthorised(issuerAddress);
   return { txHash: confirmReceipt.hash, authorised };
@@ -104,7 +117,8 @@ export async function isIssuerAuthorised(issuerAddress) {
 // ---- credential anchoring / revocation (per-issuer key) --------------------
 export async function anchorCredentialAs(issuerPrivKey, credentialHash, cidHash) {
   const signer = new ethers.Wallet(issuerPrivKey, getProvider());
-  const tx = await credReg(signer).issueCredential(credentialHash, cidHash, withGas(160000));
+  const reg = credReg(signer);
+  const tx = await reg.issueCredential(credentialHash, cidHash, await gasFor(reg.issueCredential, [credentialHash, cidHash], 600000));
   const receipt = await tx.wait();
   return { txHash: receipt.hash, blockNumber: receipt.blockNumber };
 }
@@ -112,14 +126,14 @@ export async function anchorCredentialAs(issuerPrivKey, credentialHash, cidHash)
 export async function revokeCredentialAs(issuerPrivKey, credentialHash, reasonCode) {
   const signer = new ethers.Wallet(issuerPrivKey, getProvider());
   const rev = new ethers.Contract(config.chain.revocationRegistry, REVOCATION_REGISTRY_ABI, signer);
-  const receipt = await (await rev.revoke(credentialHash, reasonCode, withGas(140000))).wait();
+  const receipt = await (await rev.revoke(credentialHash, reasonCode, await gasFor(rev.revoke, [credentialHash, reasonCode], 400000))).wait();
   return { txHash: receipt.hash };
 }
 
 export async function reissueCredentialAs(issuerPrivKey, oldHash, newHash) {
   const signer = new ethers.Wallet(issuerPrivKey, getProvider());
   const rev = new ethers.Contract(config.chain.revocationRegistry, REVOCATION_REGISTRY_ABI, signer);
-  const receipt = await (await rev.reissue(oldHash, newHash, withGas(160000))).wait();
+  const receipt = await (await rev.reissue(oldHash, newHash, await gasFor(rev.reissue, [oldHash, newHash], 500000))).wait();
   return { txHash: receipt.hash };
 }
 

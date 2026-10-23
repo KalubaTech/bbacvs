@@ -176,7 +176,10 @@ export async function verifyCredentialHash(credentialHash) {
     status: chain, // on-chain: VERIFIED | REVOKED | UNKNOWN_ISSUER | NOT_FOUND | UNAVAILABLE
     displayStatus,
     issuer: onchain?.issuer ?? null,
-    issuedAt: onchain?.issuedAt ?? null,
+    // Original issuance time (unix s). Credentials re-anchored on the D01 contracts carry the
+    // migration time on-chain, so the index's issuance date is preferred; anchoredAt is the chain's.
+    issuedAt: meta?.issuedAt ? Math.floor(new Date(meta.issuedAt).getTime() / 1000) : (onchain?.issuedAt ?? null),
+    anchoredAt: onchain?.issuedAt ?? null,
     mode: "online",
     // Evidence for the result: which integrity checks ran and which rule decided the status.
     integrity: { status: integrity.status, reason: integrity.reason || null, checks: integrity.checks, statusRule: rule },
