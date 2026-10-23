@@ -4,11 +4,10 @@ import { validate } from "../middleware/security.js";
 import { requireAuth, requireRole, ROLES, ISSUING_ROLES, GOVERNANCE_ROLES } from "../middleware/auth.js";
 import { Issuer, CredentialIndex, Programme, VerificationLog } from "../models/index.js";
 import { decryptKey } from "../services/keystore.service.js";
-import { anchorCredentialAs, revokeCredentialAs, verifyOnChain } from "../services/web3.service.js";
+import { anchorCredentialAs, revokeCredentialAs, reissueCredentialAs, verifyOnChain } from "../services/web3.service.js";
 import { renderQR } from "../services/signedQr.service.js";
 import {
-  prepareCredential, indexCredential, findDuplicateCredential, describeDuplicate,
-  issuanceLockKey, acquireIssuanceLock, DUPLICATE_CREDENTIAL_MESSAGE,
+  prepareCredential, indexCredential, reserveIssuance, currentCredentialQr,
 } from "../services/issuance.service.js";
 import { buildCertificatePDF, buildTranscriptPDF } from "../services/pdf.service.js";
 import { logActivity } from "../services/activity.service.js";
@@ -48,27 +47,15 @@ async function programmeGate(issuerId, qualification) {
   return approved.map((p) => p.name);
 }
 
-// Duplicate-issuance guard (two layers). 1) Database: a live (active / pending / suspended)
-// credential from this institution to the same candidate — matched by email OR national ID —
-// for the same qualification and graduation year. 2) In-flight lock: an identical issuance
-// that is still pinning/anchoring (a double-clicked "Issue" button) and has no index row yet.
+// Duplicate-issuance guard (two layers, see reserveIssuance). 1) Reservation: an identical
+// issuance still pinning/anchoring (a double-clicked "Issue") holds a database reservation.
+// 2) Database: a live (active / pending / suspended) credential from this institution to the
+// same candidate — matched by email OR national ID — for the same qualification and year.
 // Returns { release } when issuance may proceed, or sends a 409 and returns null.
-async function guardDuplicateIssuance(res, { issuerId, holderEmail, nationalId, qualification, graduationYear, excludeHash }) {
-  const identity = { issuerId, holderEmail, nationalId, qualification, graduationYear };
-  const dup = await findDuplicateCredential({ ...identity, excludeHash });
-  if (dup) {
-    res.status(409).json({
-      error: DUPLICATE_CREDENTIAL_MESSAGE, code: "duplicate_credential",
-      existing: describeDuplicate(dup, { holderEmail, nationalId }),
-    });
-    return null;
-  }
-  const release = acquireIssuanceLock(issuanceLockKey(identity));
-  if (!release) {
-    res.status(409).json({
-      error: "This credential is already being issued — please wait for the first request to finish.",
-      code: "issuance_in_progress",
-    });
+async function guardDuplicateIssuance(res, identity) {
+  const { release, conflict } = await reserveIssuance(identity);
+  if (conflict) {
+    res.status(409).json(conflict);
     return null;
   }
   return { release };
@@ -134,7 +121,7 @@ router.post("/issue", requireAuth, requireRole(...ISSUING_ROLES), validate(issue
         credentialHash: prep.credentialHash, cid: prep.cid, institution: issuer.institution,
         anchor, qrPayload: prep.qrPayload, qrImage: await renderQR(prep.qrPayload),
       });
-    } finally { lock.release(); }
+    } finally { await lock.release(); }
   } catch (err) { next(err); }
 });
 
@@ -175,7 +162,7 @@ router.post("/prepare", requireAuth, requireRole(...ISSUING_ROLES), validate(iss
         credentialRegistry: config.chain.credentialRegistry, // contract the client calls
         issuerAddress: issuer.walletAddress,                  // MetaMask must be this account
       });
-    } finally { lock.release(); }
+    } finally { await lock.release(); }
   } catch (err) { next(err); }
 });
 
@@ -206,9 +193,10 @@ router.post("/finalize", requireAuth, requireRole(...ISSUING_ROLES), validate(fi
     pushEvent(cred, req, "credential.anchored", "Anchored on-chain via MetaMask", { from: "pending", to: "active", txHash });
     await cred.save();
     await logActivity(req, { action: "credential.finalize", entity: "credential", entityId: credentialHash, summary: `Anchored ${cred.subjectName}'s ${cred.qualification} via MetaMask` });
+    const qrPayload = await currentCredentialQr(cred);
     res.status(201).json({
       credentialHash, cid: cred.cid, institution: issuer.institution,
-      qrPayload: cred.qrPayload, qrImage: await renderQR(cred.qrPayload), anchor: { txHash },
+      qrPayload, qrImage: await renderQR(qrPayload), anchor: { txHash },
     });
   } catch (err) { next(err); }
 });
@@ -461,8 +449,9 @@ router.post("/:hash/supersede", requireAuth, requireRole(...ISSUING_ROLES), vali
       }
       pushEvent(newCred, req, "credential.issued", `Issued as a correction superseding ${cred.credentialHash}`, { supersedes: cred.credentialHash, txHash: anchor.txHash });
       await newCred.save();
-      // Revoke the old record on-chain — reason 1 = AdministrativeError.
-      const revokeTx = await revokeCredentialAs(decryptKey(issuer.encPrivateKey), cred.credentialHash, 1);
+      // Supersede the old record on-chain: revoked with reason 1 (AdministrativeError) and
+      // linked to the replacement, which the contract checks belongs to the same issuer.
+      const revokeTx = await reissueCredentialAs(decryptKey(issuer.encPrivateKey), cred.credentialHash, prep.credentialHash);
       cred.status = "revoked"; cred.reasonCode = 1; cred.supersededBy = prep.credentialHash;
       // The correction (if the holder raised one) is answered by this reissue.
       if (cred.correctionRequest?.status === "open") cred.correctionRequest.status = "resolved";
@@ -476,7 +465,7 @@ router.post("/:hash/supersede", requireAuth, requireRole(...ISSUING_ROLES), vali
         supersedes: cred.credentialHash, anchor, revokeTx,
         qrPayload: prep.qrPayload, qrImage: await renderQR(prep.qrPayload),
       });
-    } finally { lock.release(); }
+    } finally { await lock.release(); }
   } catch (err) { next(err); }
 });
 
@@ -486,8 +475,8 @@ router.get("/:hash/qr", requireAuth, async (req, res, next) => {
     const cred = await CredentialIndex.findOne({ credentialHash: req.params.hash }).lean();
     if (!cred) return res.status(404).json({ error: "Not found" });
     if (!canAccessCredential(req, cred)) return res.status(403).json({ error: "Not your credential" });
-    // Ensure the full hash rides in the QR even for credentials issued before that change.
-    const payload = { ...cred.qrPayload, hash: cred.credentialHash };
+    // Legacy QRs (full hash outside the signature) are re-signed as v2 before being handed out.
+    const payload = await currentCredentialQr(cred);
     res.json({ qrPayload: payload, qrImage: await renderQR(payload) });
   } catch (err) { next(err); }
 });
@@ -498,7 +487,7 @@ router.get("/:hash/pdf", requireAuth, async (req, res, next) => {
     const cred = await CredentialIndex.findOne({ credentialHash: req.params.hash }).lean();
     if (!cred) return res.status(404).json({ error: "Not found" });
     if (!canAccessCredential(req, cred)) return res.status(403).json({ error: "Not your credential" });
-    const qrImage = await renderQR({ ...cred.qrPayload, hash: cred.credentialHash });
+    const qrImage = await renderQR(await currentCredentialQr(cred));
     const pdf = await buildCertificatePDF(cred, qrImage);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="credential-${req.params.hash.slice(0, 10)}.pdf"`);

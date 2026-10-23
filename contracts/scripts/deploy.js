@@ -1,6 +1,6 @@
 // Deploys the full BBACVS on-chain stack and wires governance.
-// Order: GovernanceSafe -> IssuerRegistry(gov) -> RevocationRegistry(issuerReg)
-//        -> CredentialRegistry(issuerReg, revReg, gov)
+// Order: GovernanceSafe -> IssuerRegistry(gov) -> RevocationRegistry(issuerReg, gov)
+//        -> CredentialRegistry(issuerReg, revReg, gov) -> revReg.bindCredentialRegistry(credReg)
 //
 // Usage: npx hardhat run scripts/deploy.js --network sepolia
 require("dotenv").config();
@@ -28,7 +28,7 @@ async function main() {
 
   console.log("Deploying RevocationRegistry...");
   const RevocationRegistry = await hre.ethers.getContractFactory("RevocationRegistry");
-  const revocationRegistry = await RevocationRegistry.deploy(issuerAddr);
+  const revocationRegistry = await RevocationRegistry.deploy(issuerAddr, safeAddr);
   await revocationRegistry.waitForDeployment();
   const revAddr = await revocationRegistry.getAddress();
 
@@ -37,6 +37,8 @@ async function main() {
   const credentialRegistry = await CredentialRegistry.deploy(issuerAddr, revAddr, safeAddr);
   await credentialRegistry.waitForDeployment();
   const credAddr = await credentialRegistry.getAddress();
+  // RevocationRegistry resolves each credential's original issuer from the CredentialRegistry.
+  await (await revocationRegistry.bindCredentialRegistry(credAddr)).wait();
 
   console.log("\nBBACVS deployment complete:");
   console.table({

@@ -1,9 +1,10 @@
 // Pure parts of the duplicate-issuance guard (no database): identity matching by email AND
-// national ID, and the in-flight lock that stops a double-clicked "Issue" from anchoring twice.
+// national ID, and the reservation key. The database-backed reservation itself is covered by
+// issuanceReservation.test.js.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  holderIdentityClauses, issuanceLockKey, acquireIssuanceLock, describeDuplicate,
+  holderIdentityClauses, issuanceLockKey, describeDuplicate,
   LIVE_CREDENTIAL_STATUSES,
 } from "../src/services/issuance.service.js";
 
@@ -30,17 +31,6 @@ test("issuanceLockKey is stable across casing / whitespace differences in the sa
   assert.equal(a, b);
   const c = issuanceLockKey({ issuerId: "iss1", holderEmail: "grad@example.com", nationalId: "123456/78/1", qualification: "BSc Computer Science", graduationYear: 2025 });
   assert.notEqual(a, c, "a different graduation year is a different credential");
-});
-
-test("acquireIssuanceLock rejects a concurrent identical issuance until the first releases", () => {
-  const key = issuanceLockKey({ issuerId: "iss1", holderEmail: "g@x.zm", qualification: "Diploma", graduationYear: 2020 });
-  const release = acquireIssuanceLock(key);
-  assert.equal(typeof release, "function");
-  assert.equal(acquireIssuanceLock(key), null, "double-click: second request must be refused");
-  release();
-  const again = acquireIssuanceLock(key);
-  assert.equal(typeof again, "function", "lock is free again after release");
-  again();
 });
 
 test("describeDuplicate reports which identifiers matched without leaking the NRC", () => {

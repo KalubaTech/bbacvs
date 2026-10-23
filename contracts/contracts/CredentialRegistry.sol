@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IIssuerRegistry} from "./interfaces/IIssuerRegistry.sol";
+import {ICredentialRegistry} from "./interfaces/ICredentialRegistry.sol";
 import {RevocationRegistry} from "./RevocationRegistry.sol";
 
 /// @title CredentialRegistry
@@ -11,7 +12,7 @@ import {RevocationRegistry} from "./RevocationRegistry.sol";
 /// @dev Stores only the SHA-256 credential hash, IPFS CID hash, and issuer DID — never PII.
 ///      Verification (verifyCredential) is a read-only, zero-gas view. Security layers
 ///      L6 (cryptographic integrity) and L10 (reentrancy/gas) of the proposal.
-contract CredentialRegistry is ReentrancyGuard, Pausable {
+contract CredentialRegistry is ReentrancyGuard, Pausable, ICredentialRegistry {
     /// @dev Packed to minimise storage slots (gas) per the class diagram.
     struct Credential {
         address issuer;     // slot 0: 20 bytes
@@ -112,6 +113,11 @@ contract CredentialRegistry is ReentrancyGuard, Pausable {
 
     function getCredential(bytes32 credentialHash) external view returns (Credential memory) {
         return _credentials[credentialHash];
+    }
+
+    /// @inheritdoc ICredentialRegistry
+    function issuerOf(bytes32 credentialHash) external view returns (address) {
+        return _credentials[credentialHash].issuer;
     }
 
     /// @notice Emergency pause of issuance. Governance (2-of-3 multi-sig) only.

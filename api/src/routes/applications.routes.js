@@ -10,8 +10,7 @@ import { Application, Issuer } from "../models/index.js";
 import { decryptKey } from "../services/keystore.service.js";
 import { anchorCredentialAs } from "../services/web3.service.js";
 import {
-  prepareCredential, indexCredential, findDuplicateCredential, describeDuplicate,
-  issuanceLockKey, acquireIssuanceLock, DUPLICATE_CREDENTIAL_MESSAGE,
+  prepareCredential, indexCredential, reserveIssuance,
 } from "../services/issuance.service.js";
 import { normaliseNationalId } from "../utils/nationalId.js";
 import { pin, fetchByCid } from "../services/ipfs.service.js";
@@ -184,17 +183,8 @@ router.post("/:id/verify-issue", requireAuth, requireRole(...ISSUING_ROLES), asy
       issuerId: issuer._id, holderEmail: app.applicantEmail, nationalId: app.applicantNationalId,
       qualification: app.qualification, graduationYear: app.graduationYear,
     };
-    const dup = await findDuplicateCredential(identity);
-    if (dup) {
-      return res.status(409).json({
-        error: DUPLICATE_CREDENTIAL_MESSAGE, code: "duplicate_credential",
-        existing: describeDuplicate(dup, identity),
-      });
-    }
-    const release = acquireIssuanceLock(issuanceLockKey(identity));
-    if (!release) {
-      return res.status(409).json({ error: "This credential is already being issued — please wait for the first request to finish.", code: "issuance_in_progress" });
-    }
+    const { release, conflict } = await reserveIssuance(identity);
+    if (conflict) return res.status(409).json(conflict);
     try {
       const prep = await prepareCredential(issuer, app.applicantEmail, claims);
       const anchor = await anchorCredentialAs(decryptKey(issuer.encPrivateKey), prep.credentialHash, prep.cidHash);
@@ -214,7 +204,7 @@ router.post("/:id/verify-issue", requireAuth, requireRole(...ISSUING_ROLES), asy
       await notifyEmail(app.applicantEmail, `${app.institution} verified your ${app.qualification} and forwarded it to ZAQA for national validation.`);
       await notifyRole("zaqa", `New credential submitted for validation: ${app.applicantName} — ${app.qualification} (${app.institution}). Automated risk: ${cred.validationReport.risk}.`);
       res.status(201).json({ application: view(app) });
-    } finally { release(); }
+    } finally { await release(); }
   } catch (err) { next(err); }
 });
 

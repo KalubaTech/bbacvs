@@ -51,3 +51,13 @@ test("POST /api/verify/offline rejects a non-JSON / oversized body safely", asyn
   });
   assert.equal(res.status, 400);
 });
+
+test("POST /api/verify/qr rejects a QR payload without a signature with 400", async () => {
+  const { res, body } = await getJson(`${srv.baseUrl}/api/verify/qr`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ payload: { hash: "0x" + "ab".repeat(32), iss_pk_ref: "did:ethr:0x1#keys-1" } }),
+  });
+  assert.equal(res.status, 400);
+  assert.equal(body.error, "Validation failed");
+});

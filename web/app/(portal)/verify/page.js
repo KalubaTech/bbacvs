@@ -8,12 +8,13 @@ import AutoShell from "../../../components/portal/AutoShell";
 import Icon from "../../../components/portal/icons";
 import { Badge } from "../../../components/portal/kit";
 import QrScanner from "../../../components/QrScanner";
-import { syncIssuerKeys, verifyOfflineLocal, getCachedKeys } from "../../../lib/offline";
+import { syncIssuerKeys, verifyOfflineLocal, getCachedKeys, cacheInfo } from "../../../lib/offline";
 
 // icon: "ok" (check) | "wait" (clock — pending/under-review) | "bad" (cross — failed/negative)
 const STATES = {
   VERIFIED: { cls: "border-emerald-200 bg-emerald-50", dot: "bg-emerald-500", text: "text-emerald-800", label: "Verified", ok: true, icon: "ok" },
-  OFFLINE_VERIFIED: { cls: "border-emerald-200 bg-emerald-50", dot: "bg-emerald-500", text: "text-emerald-800", label: "Verified offline", ok: true, icon: "ok" },
+  SIGNATURE_ONLY: { cls: "border-emerald-200 bg-emerald-50", dot: "bg-emerald-500", text: "text-emerald-800", label: "Signature valid (offline)", ok: true, icon: "ok" },
+  SIGNATURE_ONLY_STALE: { cls: "border-amber-200 bg-amber-50", dot: "bg-amber-500", text: "text-amber-900", label: "Signature valid — cached keys expired", ok: true, icon: "wait" },
   REVOKED: { cls: "border-red-200 bg-red-50", dot: "bg-red-500", text: "text-red-800", label: "Revoked", icon: "bad" },
   SUSPENDED: { cls: "border-red-200 bg-red-50", dot: "bg-red-500", text: "text-red-800", label: "Suspended — under review", icon: "bad" },
   SUSPICIOUS: { cls: "border-amber-200 bg-amber-50", dot: "bg-amber-500", text: "text-amber-900", label: "Suspicious — under review", icon: "wait" },
@@ -22,7 +23,10 @@ const STATES = {
   PENDING_ZAQA_VALIDATION: { cls: "border-amber-200 bg-amber-50", dot: "bg-amber-500", text: "text-amber-900", label: "Awaiting ZAQA validation", icon: "wait" },
   UNKNOWN_ISSUER: { cls: "border-amber-200 bg-amber-50", dot: "bg-amber-500", text: "text-amber-900", label: "Unknown issuer", icon: "wait" },
   NOT_FOUND: { cls: "border-slate-200 bg-slate-50", dot: "bg-slate-400", text: "text-slate-700", label: "Not found", icon: "bad" },
-  TAMPERED: { cls: "border-red-200 bg-red-50", dot: "bg-red-500", text: "text-red-800", label: "Tampered", icon: "bad" },
+  TAMPERED: { cls: "border-red-200 bg-red-50", dot: "bg-red-500", text: "text-red-800", label: "Failed integrity check", icon: "bad" },
+  UNTRUSTED: { cls: "border-amber-200 bg-amber-50", dot: "bg-amber-500", text: "text-amber-900", label: "Issuer key not confirmed", icon: "wait" },
+  INTEGRITY_UNAVAILABLE: { cls: "border-slate-200 bg-slate-50", dot: "bg-slate-400", text: "text-slate-700", label: "Could not be fully checked", icon: "wait" },
+  UNAVAILABLE: { cls: "border-slate-200 bg-slate-50", dot: "bg-slate-400", text: "text-slate-700", label: "Registry unreachable", icon: "wait" },
   INVALID: { cls: "border-red-200 bg-red-50", dot: "bg-red-500", text: "text-red-800", label: "Invalid signature", icon: "bad" },
   NO_KEYS: { cls: "border-slate-200 bg-slate-50", dot: "bg-slate-400", text: "text-slate-700", label: "No cached keys", icon: "bad" },
 };
@@ -62,6 +66,19 @@ export default function VerifyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Scanned QR → the server checks the QR's signature first, then verifies the credential.
+  async function runQrOnline() {
+    if (!payload) return;
+    setError(null); setResult(null); setLoading(true);
+    try {
+      const r = await api.verifyQr(payload);
+      setResult({ ...r, mode: "online" });
+      if (r.qr?.signature === "valid" && payload.hash) setVerifiedHash(payload.hash);
+    }
+    catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  }
+
   async function runOnline(h) {
     const target = (h ?? hash).trim();
     if (!target) return;
@@ -90,7 +107,7 @@ export default function VerifyPage() {
     if (!payload) return;
     const r = verifyOfflineLocal(payload);
     if (r.reason && (r.status === "NO_KEYS" || r.status === "UNKNOWN_ISSUER")) setError(r.reason);
-    setResult({ status: r.status, mode: "offline", credential: r.institution ? { institution: r.institution } : null });
+    setResult({ status: r.status, mode: "offline", credential: r.institution ? { institution: r.institution } : null, cache: r.cache, legacy: r.legacy });
   }
 
   function reset() { setPayload(null); setResult(null); setError(null); }
@@ -129,7 +146,8 @@ export default function VerifyPage() {
             <>
               <QrScanner onDecode={onScan} />
               <p className="mt-3 text-xs text-slate-400">
-                Offline keys cached: {keyCount} issuer{keyCount === 1 ? "" : "s"}.
+                Offline keys cached: {keyCount} issuer{keyCount === 1 ? "" : "s"}
+                {(() => { const c = cacheInfo(); return c ? ` · synced ${fmtAge(c.ageMs)} ago${c.expired ? " (expired — reconnect to refresh)" : ""}` : ""; })()}.
               </p>
             </>
           ) : (
@@ -139,7 +157,7 @@ export default function VerifyPage() {
                 Signed QR detected. Choose how to verify:
               </div>
               <div className="mt-4 flex flex-wrap gap-3">
-                <Button loading={loading} onClick={() => runOnline(payload.hash)} disabled={!payload.hash}>
+                <Button loading={loading} onClick={runQrOnline} disabled={!payload.hash}>
                   Verify online
                 </Button>
                 <Button variant="secondary" onClick={runOffline}>Verify offline</Button>
@@ -164,7 +182,7 @@ export default function VerifyPage() {
             <div>
               <div className={`text-lg font-bold ${state.text}`}>{state.label}</div>
               <div className="text-xs text-slate-500">
-                {result.mode === "offline" ? "Verified offline from a trusted issuer key" : "Verified against the national credential registry"}
+                {result.mode === "offline" ? "Signature-only check against a cached issuer key" : "Checked against the national credential registry"}
               </div>
             </div>
           </div>
@@ -191,6 +209,22 @@ export default function VerifyPage() {
                   label="Blockchain integrity"
                   value={result.summary.blockchainIntegrityLabel?.replace(/^Blockchain Integrity:\s*/i, "") || cap(result.summary.blockchainIntegrity)}
                 />
+                {result.summary.contentIntegrityLabel && (
+                  <SummaryRow
+                    ok={result.summary.contentIntegrity === "verified"}
+                    warn={["unavailable", "untrusted", "not_checked"].includes(result.summary.contentIntegrity)}
+                    label="Content integrity"
+                    value={result.summary.contentIntegrityLabel}
+                  />
+                )}
+                {result.qr && (
+                  <SummaryRow
+                    ok={result.qr.signature === "valid" && !result.qr.reason}
+                    warn={result.qr.legacy && result.qr.signature === "valid" && !result.qr.reason}
+                    label="QR signature"
+                    value={result.qr.reason || (result.qr.signature === "valid" ? `Valid${result.qr.legacy ? " (older QR format — ask the holder for a fresh copy)" : ""}` : "Invalid")}
+                  />
+                )}
                 <SummaryRow
                   ok={/^valid/i.test(result.summary.credentialStatus || "")}
                   warn={/pending|suspended/i.test(result.summary.credentialStatus || "")}
@@ -263,7 +297,7 @@ export default function VerifyPage() {
                   }
                 />
               </dl>
-              {result.status === "VERIFIED" && result.credential?.zaqaValidation === "validated" && (
+              {result.displayStatus === "VERIFIED" && (
                 <div className="mt-4">
                   <Button size="sm" onClick={downloadCertificate} loading={certBusy}>
                     Download ZAQA verification certificate
@@ -271,6 +305,11 @@ export default function VerifyPage() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Scanned QR rejected before any credential lookup (bad signature / unknown signer). */}
+          {result.mode === "online" && !result.summary && result.qr && (
+            <p className="mt-4 border-t border-black/5 pt-3 text-sm text-slate-700">{result.reason || result.qr.reason}</p>
           )}
 
           {/* Governance status chain — legacy fallback when the API has no summary yet */}
@@ -309,10 +348,27 @@ export default function VerifyPage() {
             </div>
           )}
 
-          {result.mode === "offline" && state.ok && (
-            <p className="mt-4 border-t border-black/5 pt-3 text-xs text-slate-500">
-              Offline check confirms issuer authenticity + QR integrity. Revocation status requires a later online re-check.
-            </p>
+          {result.mode === "offline" && (
+            <div className="mt-4 space-y-1 border-t border-black/5 pt-3 text-xs text-slate-500">
+              {state.ok && (
+                <p className="font-medium text-slate-700">
+                  Signature only: this confirms who signed the QR and that it has not been altered. It does not show whether the
+                  credential has since been revoked or suspended — verify online for the current status.
+                </p>
+              )}
+              {result.legacy && state.ok && <p>Older QR format: only part of the credential reference is signed.</p>}
+              {result.cache && (
+                <>
+                  <p>Issuer keys: {result.cache.source}</p>
+                  <p>
+                    Cached {new Date(result.cache.cachedAt).toLocaleString()} ({fmtAge(result.cache.ageMs)} ago) ·{" "}
+                    {result.cache.expired
+                      ? <span className="font-semibold text-amber-700">expired {new Date(result.cache.expiresAt).toLocaleDateString()} — reconnect to refresh</span>
+                      : <>valid until {new Date(result.cache.expiresAt).toLocaleDateString()}</>}
+                  </p>
+                </>
+              )}
+            </div>
           )}
 
           {result.mode === "online" && result.issuedAt ? (
@@ -325,6 +381,14 @@ export default function VerifyPage() {
     </div>
     </AutoShell>
   );
+}
+
+function fmtAge(ms) {
+  const m = Math.max(0, Math.round(ms / 60000));
+  if (m < 60) return `${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} h`;
+  return `${Math.round(h / 24)} days`;
 }
 
 function Item({ label, value }) {

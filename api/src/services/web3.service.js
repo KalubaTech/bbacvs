@@ -21,6 +21,7 @@ const GOVERNANCE_SAFE_ABI = [
 ];
 const REVOCATION_REGISTRY_ABI = [
   "function revoke(bytes32 credentialHash, uint8 code)",
+  "function reissue(bytes32 oldHash, bytes32 newHash)",
   "function isRevoked(bytes32 credentialHash) view returns (bool)",
 ];
 
@@ -112,6 +113,13 @@ export async function revokeCredentialAs(issuerPrivKey, credentialHash, reasonCo
   const signer = new ethers.Wallet(issuerPrivKey, getProvider());
   const rev = new ethers.Contract(config.chain.revocationRegistry, REVOCATION_REGISTRY_ABI, signer);
   const receipt = await (await rev.revoke(credentialHash, reasonCode, withGas(140000))).wait();
+  return { txHash: receipt.hash };
+}
+
+export async function reissueCredentialAs(issuerPrivKey, oldHash, newHash) {
+  const signer = new ethers.Wallet(issuerPrivKey, getProvider());
+  const rev = new ethers.Contract(config.chain.revocationRegistry, REVOCATION_REGISTRY_ABI, signer);
+  const receipt = await (await rev.reissue(oldHash, newHash, withGas(160000))).wait();
   return { txHash: receipt.hash };
 }
 

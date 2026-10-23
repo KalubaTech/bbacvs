@@ -16,11 +16,12 @@ export async function buildAccreditationCertificate(issuer) {
   const key = config.governance.signer2 || config.zaqa.signingKey;
   let qrDataUrl = null;
   if (key) {
+    // Every field, including the type and reference, is inside the signature (QR schema v2).
     const signed = buildSignedPayload(
-      { cred_did: issuer.did, cid: ref, hash8: String(issuer._id).slice(-8), iss_pk_ref: `did:${authority.abbr.toLowerCase()}#keys-1`, iat: Math.floor(Date.now() / 1000) },
+      { typ: `${authority.abbr.toLowerCase()}-accreditation`, ref, inst: issuer.did, iss_pk_ref: `did:${authority.abbr.toLowerCase()}#keys-1`, iat: Math.floor(Date.now() / 1000) },
       key
     );
-    qrDataUrl = await renderQR({ ...signed, typ: `${authority.abbr.toLowerCase()}-accreditation` });
+    qrDataUrl = await renderQR(signed);
   }
   return buildAccreditationCertificatePDF({
     institution: issuer.institution,

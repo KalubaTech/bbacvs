@@ -1,15 +1,27 @@
 // Security layers L1 (SHA-256) and L5 (AES-256-GCM).
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 import { config } from "../config/index.js";
+import { canonicalize } from "../utils/canonicalJson.js";
 
-/**
- * Canonical SHA-256 hash of a VC document.
- * NOTE: production should canonicalise JSON-LD per RFC 8785 before hashing so that
- * semantically-equal documents hash identically. Stub uses JSON.stringify for now.
- */
+/** Plain SHA-256 of a string (or of JSON.stringify(object)) — not used for credential digests. */
 export function sha256(input) {
   const data = typeof input === "string" ? input : JSON.stringify(input);
   return "0x" + createHash("sha256").update(data).digest("hex");
+}
+
+// Credential digest formats. The version is stored with every credential (CredentialIndex
+// .hashVersion) so the online verifier recomputes the digest exactly as it was made.
+//   1 — legacy: SHA-256 over JSON.stringify(signedVC). Property order dependent (D04); kept
+//       only so credentials issued before the fix still verify.
+//   2 — SHA-256 over the RFC 8785 canonical JSON of the signed VC. Order independent.
+export const LEGACY_HASH_VERSION = 1;
+export const CURRENT_HASH_VERSION = 2;
+
+/** Credential digest of a signed VC under the given format version. */
+export function credentialDigest(signedVC, version = CURRENT_HASH_VERSION) {
+  if (version === LEGACY_HASH_VERSION) return sha256(JSON.stringify(signedVC));
+  if (version === CURRENT_HASH_VERSION) return sha256(canonicalize(signedVC));
+  throw new Error(`Unknown credential hash version: ${version}`);
 }
 
 /** First 8 bytes of the SHA-256 hash — the QR "hash8" integrity fragment. */

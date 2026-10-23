@@ -125,6 +125,9 @@ const issuerSchema = new mongoose.Schema(
 const credentialIndexSchema = new mongoose.Schema(
   {
     credentialHash: { type: String, required: true, unique: true, index: true },
+    // Digest format of credentialHash (crypto.service credentialDigest): 1 = legacy
+    // JSON.stringify, 2 = RFC 8785 canonical JSON. Missing on pre-fix records = 1.
+    hashVersion: { type: Number },
     cid: { type: String, required: true },
     issuer: { type: mongoose.Schema.Types.ObjectId, ref: "Issuer" },
     issuerAddress: { type: String, index: true },
@@ -194,6 +197,8 @@ const credentialIndexSchema = new mongoose.Schema(
     },
     qrPayload: { type: Object },
     anchorTx: { type: String },
+    // Anchor on the retired (pre-D01) registry, kept when a credential was re-anchored.
+    legacyAnchorTx: { type: String },
     issuedAt: { type: Date, default: Date.now },
 
     // complete credential lifecycle history — appended, never rewritten
@@ -427,6 +432,16 @@ const verificationLogSchema = new mongoose.Schema(
 );
 
 // NQF knowledge base (framework versions, levels, sub-frameworks, national register, policies).
+// --- issuance reservations: cross-process duplicate-issuance lock (D08) ----------------------
+// One row per in-flight issuance, keyed on (issuer, candidate, qualification, year). The unique
+// index makes the reservation atomic across any number of API processes; the TTL index clears a
+// reservation left behind by a crashed process.
+const issuanceReservationSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true },
+  owner: { type: String },
+  expiresAt: { type: Date, required: true, index: { expireAfterSeconds: 0 } },
+}, { timestamps: true });
+
 export * from "./nqf.models.js";
 // Billing: invoices & quotations, payments, receipts (manual fee workflow).
 export * from "./billing.models.js";
@@ -441,3 +456,4 @@ export const RecognitionCase = mongoose.model("RecognitionCase", recognitionCase
 export const Notification = mongoose.model("Notification", notificationSchema);
 export const ActivityLog = mongoose.model("ActivityLog", activityLogSchema);
 export const VerificationLog = mongoose.model("VerificationLog", verificationLogSchema);
+export const IssuanceReservation = mongoose.model("IssuanceReservation", issuanceReservationSchema);

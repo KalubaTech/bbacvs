@@ -322,6 +322,9 @@ export const api = {
 
   // verify (public)
   verifyOnline: (hash) => request(`/api/verify/${hash}`),
+  // Scanned QR: the server checks the QR signature before trusting its credential reference.
+  verifyQr: (payload) =>
+    request(`/api/verify/qr`, { method: "POST", body: JSON.stringify({ payload }) }),
   verifyOffline: (payload, issuerPubKey) =>
     request(`/api/verify/offline`, { method: "POST", body: JSON.stringify({ payload, issuerPubKey }) }),
   issuerKeys: () => request(`/api/verify/issuer-keys`),

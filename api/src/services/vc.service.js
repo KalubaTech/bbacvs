@@ -7,6 +7,15 @@
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256 as nobleSha256 } from "@noble/hashes/sha256";
 import { utf8ToBytes } from "@noble/hashes/utils";
+import { canonicalize } from "../utils/canonicalJson.js";
+
+// Proof input encoding. New proofs sign the RFC 8785 canonical JSON of the unsigned VC and say
+// so in `proof.canonicalization`; proofs without that field are legacy (JSON.stringify, property
+// order dependent) and are still accepted for credentials issued before the change (D04/D10).
+const JCS = "JCS";
+function proofInput(vc, canonicalization) {
+  return utf8ToBytes(canonicalization === JCS ? canonicalize(vc) : JSON.stringify(vc));
+}
 
 /**
  * Build an unsigned W3C VC for an academic credential.
@@ -36,7 +45,7 @@ export function buildCredential({ issuerDID, holderDID, claims }) {
  * @returns {object} signed VC
  */
 export function signCredential(vc, issuerPrivKeyHex, issuerDID) {
-  const digest = nobleSha256(utf8ToBytes(JSON.stringify(vc)));
+  const digest = nobleSha256(proofInput(vc, JCS));
   const sig = secp256k1.sign(digest, issuerPrivKeyHex.replace(/^0x/, ""));
   return {
     ...vc,
@@ -45,6 +54,7 @@ export function signCredential(vc, issuerPrivKeyHex, issuerDID) {
       created: new Date().toISOString(),
       proofPurpose: "assertionMethod",
       verificationMethod: `${issuerDID}#keys-1`,
+      canonicalization: JCS,
       signatureValue: "0x" + sig.toDERHex(),
     },
   };
@@ -54,7 +64,7 @@ export function signCredential(vc, issuerPrivKeyHex, issuerDID) {
 export function verifyCredential(signedVC, issuerPubKeyHex) {
   try {
     const { proof, ...vc } = signedVC;
-    const digest = nobleSha256(utf8ToBytes(JSON.stringify(vc)));
+    const digest = nobleSha256(proofInput(vc, proof.canonicalization));
     const sig = proof.signatureValue.replace(/^0x/, "");
     return secp256k1.verify(sig, digest, issuerPubKeyHex.replace(/^0x/, ""));
   } catch {
