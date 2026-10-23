@@ -33,7 +33,13 @@ export const config = {
   ipfs: {
     pinataJwt: process.env.PINATA_JWT || "",
     gateway: process.env.PINATA_GATEWAY || "https://gateway.pinata.cloud",
+    // Plain HTTP gateway (`<base>/ipfs/<cid>`) used instead of the Pinata SDK for reads, e.g. a
+    // local IPFS node or the isolated benchmark's stand-in.
+    fetchBase: process.env.IPFS_FETCH_BASE || "",
   },
+
+  // Cache of encrypted VC payloads by CID in online verification ("off" for cold-path tests).
+  integrityCache: process.env.INTEGRITY_CACHE !== "off",
 
   aesKey: process.env.AES_256_KEY || "",
 

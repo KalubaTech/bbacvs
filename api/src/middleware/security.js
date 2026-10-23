@@ -14,10 +14,11 @@ export const corsMw = cors({
   credentials: true,
 });
 
-// 100 requests/min general limiter (proposal §3.9, L7).
+// 100 requests/min general limiter (proposal §3.9, L7). RATE_LIMIT_PER_MIN overrides it for
+// controlled load tests (bench/), which must not measure the limiter instead of the system.
 export const rateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: Number(process.env.RATE_LIMIT_PER_MIN) || 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, slow down." },

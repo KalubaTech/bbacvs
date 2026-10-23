@@ -16,6 +16,7 @@ import { fetchByCid } from "./ipfs.service.js";
 import { aesDecrypt, credentialDigest, sha256, LEGACY_HASH_VERSION } from "./crypto.service.js";
 import { verifyCredential } from "./vc.service.js";
 import { normaliseNationalId } from "../utils/nationalId.js";
+import { config } from "../config/index.js";
 
 const FETCH_TIMEOUT_MS = 15000;
 
@@ -25,12 +26,13 @@ const cache = new Map();
 const CACHE_MAX = 500;
 
 async function fetchEncrypted(cid, fetcher) {
-  if (cache.has(cid)) return cache.get(cid);
+  if (config.integrityCache && cache.has(cid)) return cache.get(cid);
   let timer;
   const data = await Promise.race([
     fetcher(cid),
     new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("IPFS fetch timed out")), FETCH_TIMEOUT_MS); }),
   ]).finally(() => clearTimeout(timer));
+  if (!config.integrityCache) return data;
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
   cache.set(cid, data);
   return data;

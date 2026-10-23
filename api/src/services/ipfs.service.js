@@ -30,6 +30,11 @@ export async function pin(encrypted) {
  * @param {string} cid
  */
 export async function fetchByCid(cid) {
+  if (config.ipfs.fetchBase) {
+    const res = await fetch(`${config.ipfs.fetchBase.replace(/\/$/, "")}/ipfs/${encodeURIComponent(cid)}`);
+    if (!res.ok) throw new Error(`IPFS gateway returned ${res.status}`);
+    return res.json();
+  }
   const pinata = await client();
   const { data } = await pinata.gateways.get(cid);
   return data;
