@@ -1,0 +1,44 @@
+import { ethers } from "/var/www/bbacvs/node_modules/ethers/lib.esm/index.js";
+import mongoose from "/var/www/bbacvs/node_modules/mongoose/index.js";
+import { config } from "/var/www/bbacvs/api/src/config/index.js";
+import { connectDB, CredentialIndex, Issuer } from "/var/www/bbacvs/api/src/models/index.js";
+import { decryptKey } from "/var/www/bbacvs/api/src/services/keystore.service.js";
+import { buildCredentialQr } from "/var/www/bbacvs/api/src/services/signedQr.service.js";
+import { secp256k1 } from "/var/www/bbacvs/node_modules/@noble/curves/secp256k1.js";
+import { sha256 } from "/var/www/bbacvs/node_modules/@noble/hashes/sha256.js";
+import { utf8ToBytes } from "/var/www/bbacvs/node_modules/@noble/hashes/utils.js";
+await connectDB();
+const p = new ethers.JsonRpcProvider(config.chain.rpcUrl);
+const unzaCred = await CredentialIndex.findOne({ institution: "UNZA", status: "active", zaqaValidation: "validated" }).lean();
+const unza = await Issuer.findById(unzaCred.issuer).lean();
+const zut = await Issuer.findOne({ institution: /College of Technology/ }).lean();
+const rev = (key) => new ethers.Contract(config.chain.revocationRegistry, ["function revoke(bytes32,uint8)", "function reissue(bytes32,bytes32)"], new ethers.Wallet(decryptKey(key), p));
+const tryCall = async (label, fn) => { try { await fn(); console.log("UNEXPECTED SUCCESS", label); } catch (e) { console.log(`${label}: reverted — ${e.reason || e.shortMessage}`); } };
+console.log("== D01 on live Sepolia (eth_call, no state change) ==");
+await tryCall("ZUT revokes UNZA's credential", () => rev(zut.encPrivateKey).revoke.staticCall(unzaCred.credentialHash, 2));
+const zutCred = await CredentialIndex.findOne({ issuer: zut._id }).lean();
+await tryCall("ZUT supersedes UNZA's credential with its own", () => rev(zut.encPrivateKey).reissue.staticCall(unzaCred.credentialHash, zutCred.credentialHash));
+await tryCall("UNZA revokes a never-anchored hash", () => rev(unza.encPrivateKey).revoke.staticCall(ethers.keccak256("0x1234"), 2));
+await tryCall("UNZA self-replacement", () => rev(unza.encPrivateKey).reissue.staticCall(unzaCred.credentialHash, unzaCred.credentialHash));
+const ok = await rev(unza.encPrivateKey).revoke.staticCall(unzaCred.credentialHash, 2).then(() => "would succeed").catch((e) => e.reason);
+console.log("UNZA revokes its own credential (simulated only):", ok);
+
+console.log("\n== D03 QR checks against https://bbacvs.kalootech.com/api/verify/qr ==");
+const post = async (label, payload) => {
+  const r = await fetch("https://bbacvs.kalootech.com/api/verify/qr", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ payload }) });
+  const b = await r.json();
+  console.log(`${label}: ${b.displayStatus} | qr.signature=${b.qr?.signature} ${b.qr?.reason || b.reason || ""}`);
+};
+const good = buildCredentialQr({ credentialHash: unzaCred.credentialHash, cid: unzaCred.cid, holderDID: unzaCred.holderDID, issuerDID: unza.did }, decryptKey(unza.encPrivateKey));
+await post("genuine v2 QR", good);
+await post("v2 QR, full hash swapped to another credential", { ...good, hash: zutCred.credentialHash });
+await post("v2 QR, CID modified", { ...good, cid: "QmTampered" });
+const zutSigned = buildCredentialQr({ credentialHash: unzaCred.credentialHash, cid: unzaCred.cid, holderDID: unzaCred.holderDID, issuerDID: zut.did }, decryptKey(zut.encPrivateKey));
+await post("ZUT-signed QR claiming UNZA's credential", zutSigned);
+// legacy QR shape
+const f = { cred_did: unzaCred.holderDID, cid: unzaCred.cid, hash8: unzaCred.credentialHash.slice(2, 18), iss_pk_ref: `${unza.did}#keys-1`, iat: 1751000000 };
+const sig = secp256k1.sign(sha256(utf8ToBytes([f.cred_did, f.cid, f.hash8, f.iss_pk_ref, f.iat].join("|"))), decryptKey(unza.encPrivateKey).replace(/^0x/, ""));
+const legacy = { ...f, sig: "0x" + sig.toDERHex(), hash: unzaCred.credentialHash };
+await post("legacy QR (genuine)", legacy);
+await post("legacy QR, unsigned full hash swapped", { ...legacy, hash: zutCred.credentialHash });
+await mongoose.disconnect();

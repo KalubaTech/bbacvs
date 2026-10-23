@@ -1,0 +1,16 @@
+# Live negative-path checks against Sepolia + https://bbacvs.kalootech.com
+# commit: ae062eb8d08f755d042cf20f7cbb84162338f17c
+# timestamp: 2026-10-23T08:35:42Z
+# chain: Ethereum Sepolia (11155111); RevocationRegistry 0xc95Ad263e021ED2EF226B9D2C40523E3ADdBB840; CredentialRegistry 0xC57BE34bcd4BdF382dB21fF9336bE7a4cc7a182f
+# D01 checks use eth_call (staticCall): no state was changed. Script: scratchpad live-neg.mjs (reproduced in 06-live-checks-script.mjs)
+
+/var/www/bbacvs/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187
+          const err = new MongooseError(message);
+                      ^
+
+MongooseError: Operation `credentialindexes.findOne()` buffering timed out after 10000ms
+    at Timeout.<anonymous> (/var/www/bbacvs/node_modules/mongoose/lib/drivers/node-mongodb-native/collection.js:187:23)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)
+
+Node.js v20.20.2

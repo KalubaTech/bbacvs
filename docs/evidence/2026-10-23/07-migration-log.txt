@@ -1,0 +1,42 @@
+# Lifecycle contract redeploy + credential migration (D01) — 2026-10-23
+# Code commit for the redeploy/migration scripts: 0495f69 (gas-estimation fix: ae062eb)
+# Network: Ethereum Sepolia (chainId 11155111)
+
+$ cd contracts && npx hardhat run scripts/redeploy-lifecycle.js --network sepolia
+RevocationRegistry  0xc95Ad263e021ED2EF226B9D2C40523E3ADdBB840
+CredentialRegistry  0xC57BE34bcd4BdF382dB21fF9336bE7a4cc7a182f
+block               11975438
+Retired: RevocationRegistry 0xB23E0922Bd655FbC4CE17d1236120e5685918263,
+         CredentialRegistry 0x785c52048cf543fd7907986BB77170345059B8D2
+Kept:    GovernanceSafe 0x39aea70a718B5a77710aE0a40B4d79fcE18Ef990,
+         IssuerRegistry 0x99B41d97B29E85831591a2fb0f5ce5132BFb73ED (issuer authorisations unchanged)
+
+$ cd api && node scripts/migrate-lifecycle.js            (dry run)
+12 anchors to re-create (UNZA 8, Mulungushi University 1, ZUT 3), 1 revocation to replay (reason 2)
+
+$ node scripts/migrate-lifecycle.js --apply              (first attempt)
+FAILED on the first anchor: out of gas (gasUsed 160000 = the fixed gasLimit). Investigation showed
+Sepolia now charges ~378k gas for an anchor that used 106,762 gas on 2026-09-12 — the same fixed
+limit would also have made live issuance revert. Fixed in ae062eb (estimate + 30%, fallback ceiling).
+The failed transaction changed no state.
+
+$ node scripts/migrate-lifecycle.js --apply              (second attempt)
+0xbbf2ce1a1f…  anchor  0x88524b7e2d172e722a0388c5cadc41b870b2e7df6f1086bcc34777ad672f31fd
+0x7667858d91…  anchor  0xdff97618a2b63397150f9e76f5b9b94ebb26ee5403d4b9329fc56a16bc8884b8
+0x88ccc1b676…  anchor  0x68a6e866c95972dbd6a1ba54ace949985392196f15aa5fc392c8510fa040ddde
+0x458dd4bcea…  anchor  0x78a09989d4cac349693c170e72b6a4eaa7184ca26a2f4598f998e919ac1ff2c2
+0x0de17ebb94…  anchor  0x5bad6d04f702a016368a559ef779d24ef3083862d15ad0c0859af074c1df5e33
+0x79793cc754…  anchor  0xf663fb85f9f792b733feba2541dbb094372cdcf02a7e13d61c675d18f2daf186
+0x05fe676243…  anchor  0x068a18455831b92d703b524355a315a39562a5f4c7442e009cb66632f634646c
+0xf9ed261e08…  anchor  0x7f9f59c98ebd1eba76091796f041f0df4b5a2702fb0e0399947bbdbf87056c3e
+0x3c6c3b0e35…  anchor  0x611710cc40c4f417b27f3acda9195b1905eb5dd7022d8f1aa9265ac7b0a41644
+0x8cc6e27659…  anchor  0xcec79ad69184a988c602a0e8c800db114accb0818778ada57364c549a78b02d1
+0xdfd9746891…  anchor  0x67811b8762426c3b259da9f4c912a5de549dda4e96380b4ab623165176ec4d4c
+0x433dc30a8d…  anchor  0xc5223b5401740ba153f787f98be5ef7e08d2c3c9d723aa2af176c60f8b55cd3c
+0x7667858d91…  revoke  0x65309a7f6f2b2c3d5c70a3f399a1b3a4caed6fcc638e1f27d369f5189fbe4b2a
+
+Post-migration public verification (https://bbacvs.kalootech.com/api/verify/<hash>), all 12:
+on-chain / content integrity / headline — identical to the pre-migration run on the retired
+contracts: 5 VERIFIED (ZAQA validated), 6 PENDING_ZAQA_VALIDATION, 1 REVOKED; content integrity
+"verified" for all 12 (CID commitment, IPFS retrieval, AES-GCM, digest, issuer key, VC issuer,
+VC signature, index match).

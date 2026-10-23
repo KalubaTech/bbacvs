@@ -1,0 +1,175 @@
+# command: cd api && node --test test/*.test.js
+# commit: ae062eb8d08f755d042cf20f7cbb84162338f17c
+# timestamp: 2026-10-23T08:33:53Z
+# node: v20.20.2  npm: 10.8.2
+
+# Subtest: canonical digest (v2) is independent of property order
+ok 1 - canonical digest (v2) is independent of property order
+# Subtest: legacy digest (v1) depends on property order — the D04 defect, kept only for old records
+ok 2 - legacy digest (v1) depends on property order — the D04 defect, kept only for old records
+# Subtest: v1 and v2 digests of the same record differ, so the version must be stored
+ok 3 - v1 and v2 digests of the same record differ, so the version must be stored
+# Subtest: canonicalize sorts keys recursively and keeps array order
+ok 4 - canonicalize sorts keys recursively and keeps array order
+# Subtest: canonicalize follows JCS for numbers, strings and absent values
+ok 5 - canonicalize follows JCS for numbers, strings and absent values
+# Subtest: canonicalize orders keys by UTF-16 code units
+ok 6 - canonicalize orders keys by UTF-16 code units
+# Subtest: Date values canonicalize like JSON.stringify (ISO string)
+ok 7 - Date values canonicalize like JSON.stringify (ISO string)
+# Subtest: GET /health reports the API as healthy
+ok 8 - GET /health reports the API as healthy
+# Subtest: security headers are applied to every response (Helmet)
+ok 9 - security headers are applied to every response (Helmet)
+# Subtest: unknown routes return a JSON 404, never an HTML stack page
+ok 10 - unknown routes return a JSON 404, never an HTML stack page
+# Subtest: an intact credential passes every integrity check
+ok 11 - an intact credential passes every integrity check
+# Subtest: a legacy (v1 digest) credential still verifies — migration path
+ok 12 - a legacy (v1 digest) credential still verifies — migration path
+# Subtest: edited display record (name changed in the database) → tampered
+ok 13 - edited display record (name changed in the database) → tampered
+# Subtest: CID swapped in the database (no longer matches the on-chain commitment) → tampered
+ok 14 - CID swapped in the database (no longer matches the on-chain commitment) → tampered
+# Subtest: IPFS unreachable → unavailable (not tampered, not verified)
+ok 15 - IPFS unreachable → unavailable (not tampered, not verified)
+# Subtest: ciphertext modified in storage → AES-GCM authentication fails → tampered
+ok 16 - ciphertext modified in storage → AES-GCM authentication fails → tampered
+# Subtest: validly encrypted but different content behind the CID → digest mismatch → tampered
+ok 17 - validly encrypted but different content behind the CID → digest mismatch → tampered
+# Subtest: content altered after signing and re-anchored → VC signature fails → tampered
+ok 18 - content altered after signing and re-anchored → VC signature fails → tampered
+# Subtest: issuer key on record does not belong to the on-chain issuer address → untrusted
+ok 19 - issuer key on record does not belong to the on-chain issuer address → untrusted
+# Subtest: no off-chain record for an anchor → unavailable
+ok 20 - no off-chain record for an anchor → unavailable
+# Subtest: holderIdentityClauses matches on email and on NRC so a changed email is still caught
+ok 21 - holderIdentityClauses matches on email and on NRC so a changed email is still caught
+# Subtest: holderIdentityClauses omits blank identifiers
+ok 22 - holderIdentityClauses omits blank identifiers
+# Subtest: suspended credentials still count as live for duplicate purposes; revoked do not
+ok 23 - suspended credentials still count as live for duplicate purposes; revoked do not
+# Subtest: issuanceLockKey is stable across casing / whitespace differences in the same request
+ok 24 - issuanceLockKey is stable across casing / whitespace differences in the same request
+# Subtest: describeDuplicate reports which identifiers matched without leaking the NRC
+ok 25 - describeDuplicate reports which identifiers matched without leaking the NRC
+# Subtest: exactly one of several concurrent API processes wins the same reservation
+ok 26 - exactly one of several concurrent API processes wins the same reservation
+# Subtest: release frees the reservation; an expired reservation does not block a retry
+ok 27 - release frees the reservation; an expired reservation does not block a retry
+# Subtest: normaliseNationalId canonicalises spacing and case, and drops blanks
+ok 28 - normaliseNationalId canonicalises spacing and case, and drops blanks
+# Subtest: maskNationalId hides the NRC serial but keeps district and check digit
+ok 29 - maskNationalId hides the NRC serial but keeps district and check digit
+# Subtest: maskNationalId never leaks the full identifier for other formats
+ok 30 - maskNationalId never leaks the full identifier for other formats
+# Subtest: maskNationalId returns null when no identifier is on record
+ok 31 - maskNationalId returns null when no identifier is on record
+# Subtest: a v2 credential QR carries the full reference inside the signed payload
+ok 32 - a v2 credential QR carries the full reference inside the signed payload
+# Subtest: modifying the signed field "hash" invalidates the QR
+ok 33 - modifying the signed field "hash" invalidates the QR
+# Subtest: modifying the signed field "cid" invalidates the QR
+ok 34 - modifying the signed field "cid" invalidates the QR
+# Subtest: modifying the signed field "cred_did" invalidates the QR
+ok 35 - modifying the signed field "cred_did" invalidates the QR
+# Subtest: modifying the signed field "iss_pk_ref" invalidates the QR
+ok 36 - modifying the signed field "iss_pk_ref" invalidates the QR
+# Subtest: modifying the signed field "iat" invalidates the QR
+ok 37 - modifying the signed field "iat" invalidates the QR
+# Subtest: modifying the signed field "typ" invalidates the QR
+ok 38 - modifying the signed field "typ" invalidates the QR
+# Subtest: modifying the signed field "v" invalidates the QR
+ok 39 - modifying the signed field "v" invalidates the QR
+# Subtest: adding a field after signing invalidates a v2 QR
+ok 40 - adding a field after signing invalidates a v2 QR
+# Subtest: a QR signed by another key does not verify
+ok 41 - a QR signed by another key does not verify
+# Subtest: a v2 QR without a well-formed full reference is refused
+ok 42 - a v2 QR without a well-formed full reference is refused
+# Subtest: legacy QR signatures still verify and their reference is accepted when it matches hash8
+ok 43 - legacy QR signatures still verify and their reference is accepted when it matches hash8
+# Subtest: legacy QR with a modified (unsigned) full hash is rejected — the D03 attack
+ok 44 - legacy QR with a modified (unsigned) full hash is rejected — the D03 attack
+# Subtest: the 101st request within a minute is rejected with 429 and standard RateLimit headers
+ok 45 - the 101st request within a minute is rejected with 429 and standard RateLimit headers
+# Subtest: the limit also protects the public verification endpoint
+ok 46 - the limit also protects the public verification endpoint
+# Subtest: quota is tracked per client IP (X-Forwarded-For from the trusted proxy hop)
+ok 47 - quota is tracked per client IP (X-Forwarded-For from the trusted proxy hop)
+# Subtest: no scope entries → not applicable, passes
+ok 48 - no scope entries → not applicable, passes
+# Subtest: diploma-only college issuing a degree is outside scope
+ok 49 - diploma-only college issuing a degree is outside scope
+# Subtest: award dated before the institution was eligible fails on period
+ok 50 - award dated before the institution was eligible fails on period
+# Subtest: scope that ended before the award year fails; a later entry restores it
+ok 51 - scope that ended before the award year fails; a later entry restores it
+# Subtest: every authority's scope must permit the award
+ok 52 - every authority's scope must permit the award
+# Subtest: ZQF ceiling applies only when the credential level is known
+ok 53 - ZQF ceiling applies only when the credential level is known
+# Subtest: programme cycles: covering cycle passes, gap fails, no register is not applicable
+ok 54 - programme cycles: covering cycle passes, gap fails, no register is not applicable
+# Subtest: named programmes in a scope entry restrict the qualification
+ok 55 - named programmes in a scope entry restrict the qualification
+# Subtest: authorisation must cover the study start year as well as the award year
+ok 56 - authorisation must cover the study start year as well as the award year
+# Subtest: cycle register: suspended cycle, level mismatch and study-period gap all fail
+ok 57 - cycle register: suspended cycle, level mismatch and study-period gap all fail
+# Subtest: app suspension of a ZAQA-validated credential: headline AND summary say suspended
+ok 58 - app suspension of a ZAQA-validated credential: headline AND summary say suspended
+# Subtest: ZAQA-state suspension is also SUSPENDED
+ok 59 - ZAQA-state suspension is also SUSPENDED
+# Subtest: on-chain revocation outranks suspension, tampering and ZAQA state
+ok 60 - on-chain revocation outranks suspension, tampering and ZAQA state
+# Subtest: app-level revocation not yet on-chain still reads REVOKED, not VERIFIED
+ok 61 - app-level revocation not yet on-chain still reads REVOKED, not VERIFIED
+# Subtest: tampered content is never reported as verified, whatever ZAQA says
+ok 62 - tampered content is never reported as verified, whatever ZAQA says
+# Subtest: content that could not be retrieved is INTEGRITY_UNAVAILABLE, not verified
+ok 63 - content that could not be retrieved is INTEGRITY_UNAVAILABLE, not verified
+# Subtest: unknown issuer and untrusted key are distinct outcomes
+ok 64 - unknown issuer and untrusted key are distinct outcomes
+# Subtest: registry unreachable and not found are reported as such
+ok 65 - registry unreachable and not found are reported as such
+# Subtest: ZAQA states map one-to-one once integrity and standing are good
+ok 66 - ZAQA states map one-to-one once integrity and standing are good
+# Subtest: suspension outranks a pending ZAQA state (ZAQA pending + app suspension)
+ok 67 - suspension outranks a pending ZAQA state (ZAQA pending + app suspension)
+# Subtest: every status the policy can return has a plain-language sentence
+ok 68 - every status the policy can return has a plain-language sentence
+# Subtest: GET /api/verify/:id rejects an invalid credential id (plain text) with 400
+ok 69 - GET /api/verify/:id rejects an invalid credential id (plain text) with 400
+# Subtest: GET /api/verify/:id rejects an invalid credential id (numeric id) with 400
+ok 70 - GET /api/verify/:id rejects an invalid credential id (numeric id) with 400
+# Subtest: GET /api/verify/:id rejects an invalid credential id (missing 0x prefix) with 400
+ok 71 - GET /api/verify/:id rejects an invalid credential id (missing 0x prefix) with 400
+# Subtest: GET /api/verify/:id rejects an invalid credential id (too short (31 bytes)) with 400
+ok 72 - GET /api/verify/:id rejects an invalid credential id (too short (31 bytes)) with 400
+# Subtest: GET /api/verify/:id rejects an invalid credential id (too long (33 bytes)) with 400
+ok 73 - GET /api/verify/:id rejects an invalid credential id (too long (33 bytes)) with 400
+# Subtest: GET /api/verify/:id rejects an invalid credential id (non-hex characters) with 400
+ok 74 - GET /api/verify/:id rejects an invalid credential id (non-hex characters) with 400
+# Subtest: GET /api/verify/:id rejects an invalid credential id (upper-case prefix) with 400
+ok 75 - GET /api/verify/:id rejects an invalid credential id (upper-case prefix) with 400
+# Subtest: GET /api/verify/:id rejects an invalid credential id (path-traversal attempt) with 400
+ok 76 - GET /api/verify/:id rejects an invalid credential id (path-traversal attempt) with 400
+# Subtest: GET /api/verify/:id rejects an invalid credential id (mongo operator injection) with 400
+ok 77 - GET /api/verify/:id rejects an invalid credential id (mongo operator injection) with 400
+# Subtest: GET /api/verify/:hash/certificate rejects an invalid hash with 400
+ok 78 - GET /api/verify/:hash/certificate rejects an invalid hash with 400
+# Subtest: POST /api/verify/offline rejects a malformed QR payload with 400 + details
+ok 79 - POST /api/verify/offline rejects a malformed QR payload with 400 + details
+# Subtest: POST /api/verify/offline rejects a non-JSON / oversized body safely
+ok 80 - POST /api/verify/offline rejects a non-JSON / oversized body safely
+# Subtest: POST /api/verify/qr rejects a QR payload without a signature with 400
+ok 81 - POST /api/verify/qr rejects a QR payload without a signature with 400
+# tests 81
+# suites 0
+# pass 81
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6402.160973

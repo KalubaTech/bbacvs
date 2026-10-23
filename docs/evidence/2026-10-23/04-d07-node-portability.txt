@@ -1,0 +1,21 @@
+# D07 portability check — commit ae062eb8d08f755d042cf20f7cbb84162338f17c — 2026-10-23T08:35:21Z
+
+## runtime v20.20.2
+$ node --test test/   (old script)
+# tests 82
+# pass 82
+# fail 0
+$ node --test test/*.test.js   (new script)
+# tests 81
+# pass 81
+# fail 0
+
+## runtime v22.23.4
+$ node --test test/   (old script)
+# tests 1
+# pass 0
+# fail 1
+$ node --test test/*.test.js   (new script)
+# tests 81
+# pass 81
+# fail 0

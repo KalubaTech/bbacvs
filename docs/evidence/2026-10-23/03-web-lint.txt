@@ -1,0 +1,10 @@
+# command: cd web && npm run lint
+# commit: ae062eb8d08f755d042cf20f7cbb84162338f17c
+# timestamp: 2026-10-23T08:34:00Z
+# node: v20.20.2  npm: 10.8.2
+
+
+> @bbacvs/web@0.1.0 lint
+> next lint
+
+✔ No ESLint warnings or errors

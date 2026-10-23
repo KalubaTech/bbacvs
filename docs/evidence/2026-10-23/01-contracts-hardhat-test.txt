@@ -1,0 +1,49 @@
+# command: cd contracts && npx hardhat test
+# commit: ae062eb8d08f755d042cf20f7cbb84162338f17c
+# timestamp: 2026-10-23T08:33:45Z
+# node: v20.20.2  npm: 10.8.2
+
+# hardhat: 2.28.6  solc 0.8.24
+
+
+  BBACVS on-chain stack
+    ✔ requires 2-of-3 governance to authorise an issuer (48ms)
+    ✔ rejects issuance from unauthorised accounts
+    ✔ anchors and verifies a credential
+    ✔ reports REVOKED after revocation
+    ✔ reports NOT_FOUND for unknown credentials
+    duplicate anchoring
+      ✔ reverts when the same credHash is issued twice
+      ✔ reverts even when a different issuer or CID re-anchors the same credHash
+      ✔ rejects a batch that contains an already-anchored credHash (all-or-nothing)
+      ✔ keeps the original record intact after a duplicate attempt
+    emergency pause
+      ✔ only governance (the 2-of-3 safe) can pause — a single regulator or issuer cannot
+      ✔ blocks new issuance (single and batch) once governance calls emergencyPause() (42ms)
+      ✔ keeps existing credentials verifiable while paused
+      ✔ still reports revocations while paused (revocation is not gated by the pause)
+      ✔ resumes issuance after governance unpauses
+    issuer-scoped revocation and reissue (D01)
+      ✔ lets issuer A revoke its own award
+      ✔ rejects issuer B revoking issuer A's award
+      ✔ rejects issuer B superseding issuer A's award, even with B's own replacement
+      ✔ rejects issuer A pointing its award at a replacement anchored by issuer B
+      ✔ refuses to revoke or reissue an unknown (never anchored) credential
+      ✔ refuses an already revoked credential (no second revocation, no reissue)
+      ✔ refuses a zero replacement and a self-replacement
+      ✔ refuses a replacement that is not anchored yet
+      ✔ supersedes an award with the issuer's own anchored replacement and links both
+      ✔ refuses a duplicate successor (one replacement cannot supersede two awards)
+      ✔ refuses a revoked replacement
+      ✔ rejects revocation by accounts that are not authorised issuers
+      administrative emergency revocation
+        ✔ lets 2-of-3 governance revoke any issuer's award
+        ✔ is not available to a single regulator or an issuer
+        ✔ still refuses unknown credentials and the NotRevoked reason
+        ✔ keeps working after the issuer has lost its authorisation (39ms)
+      registry binding
+        ✔ can be bound only once, and only by the deployer (43ms)
+
+
+  31 passing (5s)
+
