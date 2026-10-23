@@ -25,12 +25,16 @@ const FETCH_TIMEOUT_MS = 15000;
 const cache = new Map();
 const CACHE_MAX = 500;
 
-async function fetchEncrypted(cid, fetcher) {
+async function fetchEncrypted(cid, fetcher, timeoutMs = FETCH_TIMEOUT_MS) {
   if (config.integrityCache && cache.has(cid)) return cache.get(cid);
   let timer;
+  const fetching = fetcher(cid);
+  // When the timeout wins the race, the fetch may still fail later (e.g. a gateway 429). That
+  // late rejection must be handled, or Node treats it as unhandled and kills the process.
+  fetching.catch(() => {});
   const data = await Promise.race([
-    fetcher(cid),
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("IPFS fetch timed out")), FETCH_TIMEOUT_MS); }),
+    fetching,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("IPFS fetch timed out")), timeoutMs); }),
   ]).finally(() => clearTimeout(timer));
   if (!config.integrityCache) return data;
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
@@ -58,9 +62,10 @@ function indexMismatches(meta, subject) {
  * @param {object|null} p.meta       CredentialIndex row (cid, hashVersion, displayed fields)
  * @param {object|null} p.issuer     Issuer row whose walletAddress is the on-chain issuer
  * @param {Function} [p.fetcher]     CID → encrypted payload (injectable for tests)
+ * @param {number} [p.timeoutMs]     IPFS fetch timeout (default 15 s)
  * @returns {Promise<{status: string, reason?: string, checks: object[], subject?: object}>}
  */
-export async function checkIntegrity({ credentialHash, onchain, meta, issuer, fetcher = fetchByCid }) {
+export async function checkIntegrity({ credentialHash, onchain, meta, issuer, fetcher = fetchByCid, timeoutMs }) {
   const checks = [];
   const pass = (id, detail) => checks.push({ id, ok: true, detail });
   const fail = (status, id, detail) => {
@@ -77,7 +82,7 @@ export async function checkIntegrity({ credentialHash, onchain, meta, issuer, fe
 
   let encrypted;
   try {
-    encrypted = await fetchEncrypted(cid, fetcher);
+    encrypted = await fetchEncrypted(cid, fetcher, timeoutMs);
   } catch (err) {
     return fail("unavailable", "retrieval", `Encrypted credential could not be retrieved from IPFS (${err.message})`);
   }

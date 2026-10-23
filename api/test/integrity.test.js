@@ -109,3 +109,21 @@ test("no off-chain record for an anchor → unavailable", async () => {
   const r = await svc.checkIntegrity({ ...c, meta: null });
   assert.equal(r.status, "unavailable");
 });
+
+test("a slow IPFS fetch that fails AFTER the timeout is unavailable, and never an unhandled rejection", async () => {
+  // Regression: a Pinata 429 arriving after the 15 s timeout crashed the API process.
+  const unhandled = [];
+  const onUnhandled = (err) => unhandled.push(err);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const c = issue({ cid: "QmSlowCid" });
+    const slowFailure = () => new Promise((_, reject) => setTimeout(() => reject(new Error("429 rate limited")), 60));
+    const r = await svc.checkIntegrity({ ...c, fetcher: slowFailure, timeoutMs: 10 });
+    assert.equal(r.status, "unavailable");
+    assert.match(r.reason, /timed out/);
+    await new Promise((resolve) => setTimeout(resolve, 120)); // let the late rejection land
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+});
