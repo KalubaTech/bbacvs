@@ -1,0 +1,38 @@
+# D09 co-signing rehearsal on an ISOLATED Hardhat chain (127.0.0.1:8545, chainId 31337, fresh deploy of scripts/deploy.js)
+# commit: 29bd62b4e58edffeb1b3bc31b5c2920ba39c0989
+# timestamp: 2026-10-23T08:46:37Z  node v20.20.2
+# owners: ZAQA=hardhat#0 (API proposer/funder), ECZ=hardhat#1 (custodian, used only by cosign.js), HEA=hardhat#2; non-owner=hardhat#3
+# synthetic institution, throwaway MongoDB database (dropped afterwards)
+
+## external custody mode (GOV_COSIGN_MODE=external, no GOV_SIGNER2 in the API environment)
+custody mode: external | API holds signer2: false
+1. approval → requestIssuerAuthorisation: {"pending":true,"safeTxId":0} | onChain: false | isAuthorised on-chain: false
+2. proposal on-chain: {"executed":false,"confirmations":1,"confirmedBy":["ZAQA"],"call":{"method":"grantIssuerRole","account":"0x59b4826Cf3D95b4610836BB63c26Cba9479B2a28","institution":"Synthetic Rehearsal College"}}
+0x90F79bf6EB2c4f870365E785982E1f101E93b906 is not a GovernanceSafe owner
+3. non-owner tries to co-sign → ERROR: 0x90F79bf6EB2c4f870365E785982E1f101E93b906 is not a GovernanceSafe owner
+4. ECZ custodian dry run →
+GovernanceSafe 0x5FbDB2315678afecb367f032d93F642f64180aa3 — proposal #0
+  target      0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 (IssuerRegistry)
+  call        grantIssuerRole  account=0x59b4826Cf3D95b4610836BB63c26Cba9479B2a28  institution="Synthetic Rehearsal College"
+  executed    false   confirmations 1/2
+  ZAQA  0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 confirmed
+  ECZ   0x70997970C51812dc3A010C7d01b50e0d17dc79C8 —  ← you
+  HEA   0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC —
+
+Dry run. Re-run with CONFIRM=yes to co-sign.
+5. sync before co-signature → newly authorised: 0
+6. ECZ custodian co-signs →
+GovernanceSafe 0x5FbDB2315678afecb367f032d93F642f64180aa3 — proposal #0
+  target      0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512 (IssuerRegistry)
+  call        grantIssuerRole  account=0x59b4826Cf3D95b4610836BB63c26Cba9479B2a28  institution="Synthetic Rehearsal College"
+  executed    false   confirmations 1/2
+  ZAQA  0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 confirmed
+  ECZ   0x70997970C51812dc3A010C7d01b50e0d17dc79C8 —  ← you
+  HEA   0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC —
+
+Confirmed in 0x0631e2fc23396f807f58572932cf50e1107cb514dc0997eaf7e9a8a2705ff61a. Executed: true
+7. sync after co-signature → newly authorised: 1
+8. issuer onChain: true | proposal: executed | isAuthorised on-chain: true
+
+## server custody mode (prototype, current production setting) — unchanged behaviour
+mode: server → {"authorised":true,"txHash":"0x5a8e21e0d3ccae9a8c4abcf035bf11069ad3b5ba6df8c2576b8173be5100fcd5"} | onChain: true
