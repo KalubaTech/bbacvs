@@ -284,7 +284,7 @@ fs.writeFileSync(path.join(OUT, "summary.json"), JSON.stringify({ mode: MODE, co
 
 const sh = (cmd) => { try { return execSync(cmd, { encoding: "utf8" }).trim(); } catch { return null; } };
 fs.writeFileSync(path.join(OUT, "environment.json"), JSON.stringify({
-  mode: MODE, startedAt: STAMP, commit: sh(`git -C ${ROOT} rev-parse HEAD`), dirty: !!sh(`git -C ${ROOT} status --porcelain -- api bench contracts`),
+  mode: MODE, startedAt: STAMP, commit: sh(`git -C ${ROOT} rev-parse HEAD`), dirty: !!sh(`git -C ${ROOT} status --porcelain -- api bench contracts ':!bench/results'`), // own output excluded
   node: process.version, mongo: sh("mongod --version | head -1"), hardhat: ISOLATED ? sh(`cd ${ROOT}/contracts && npx hardhat --version`) : null,
   host: { cpu: os.cpus()[0]?.model, cores: os.cpus().length, memGB: +(os.totalmem() / 2 ** 30).toFixed(1), loadavgAtEnd: os.loadavg(), platform: `${os.type()} ${os.release()}` },
   colocation: "Load generator, both servers, MongoDB" + (ISOLATED ? ", Hardhat node and IPFS stand-in" : "") + " on the same host (loopback). Production services kept running on the host.",
