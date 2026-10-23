@@ -259,7 +259,7 @@ log("correctness:", JSON.stringify(correctness));
 const raw = fs.createWriteStream(path.join(OUT, "raw.csv"));
 raw.write("system,concurrency,rep,seq,latency_ms,http_status,display_status,ok\n");
 const results = [];
-for (const c of LEVELS) {
+for (const c of [...new Set([...LEVELS, ...COLD_LEVELS])].sort((a, b) => a - b)) {
   for (let rep = 1; rep <= REPS; rep++) {
     // Rotate the system order per repetition so slow drift does not favour one system.
     const order = systems.map((_, i) => systems[(i + rep) % systems.length]);

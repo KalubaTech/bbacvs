@@ -12,7 +12,7 @@ import rateLimit from "express-rate-limit";
 import mongoose from "mongoose";
 import { CredentialIndex, Issuer, Programme, VerificationLog } from "../api/src/models/index.js";
 import { verifyCredential } from "../api/src/services/vc.service.js";
-import { credentialDigest } from "../api/src/services/crypto.service.js";
+import { credentialDigest, LEGACY_HASH_VERSION } from "../api/src/services/crypto.service.js";
 import { checkScope, findProgramme, checkProgrammeCycle } from "../api/src/services/scope.service.js";
 import { resolveVerificationStatus } from "../api/src/services/verificationStatus.service.js";
 
@@ -41,7 +41,7 @@ export function createBaselineApp() {
 
       let integrity = "not_checked";
       if (record && issuerRec) {
-        const digestOk = credentialDigest(record.signedVC, meta.hashVersion || 2) === credentialHash;
+        const digestOk = credentialDigest(record.signedVC, meta.hashVersion || LEGACY_HASH_VERSION) === credentialHash;
         integrity = digestOk && verifyCredential(record.signedVC, issuerRec.publicKey) ? "verified" : "tampered";
       }
       const chain = !meta ? "NOT_FOUND" : meta.status === "revoked" ? "REVOKED" : "VERIFIED";
